@@ -1,7 +1,7 @@
 bl_info = {
 	"name": "VF Delivery",
 	"author": "John Einselen - Vectorform LLC",
-	"version": (0, 3),
+	"version": (0, 4),
 	"blender": (2, 80, 0),
 	"location": "Scene > VF Tools > Delivery",
 	"description": "Quickly export selected objects to a specified directory",
@@ -14,6 +14,12 @@ import bpy
 from bpy.app.handlers import persistent
 import mathutils
 
+# With help from:
+# https://stackoverflow.com/questions/54464682/best-way-to-undo-previous-steps-in-a-series-of-steps
+# https://stackoverflow.com/questions/37335653/unable-to-completely-deselect-all-objects-in-blender-using-scripting-or-key-a
+# https://blender.stackexchange.com/questions/200341/apply-modifiers-in-all-objects-at-once
+# https://github.com/CheeryLee/blender_apply_modifiers/blob/master/apply_modifiers.py
+
 ###########################################################################
 # Main class
 
@@ -24,9 +30,6 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 #	bl_options = {'REGISTER', 'UNDO'}
 	
 	def execute(self, context):
-		if not bpy.context.view_layer.objects.active.data.vertices:
-			return {'CANCELLED'}
-
 		# Set up local variables
 		location = bpy.context.scene.vf_delivery_settings.file_location
 		format = bpy.context.scene.vf_delivery_settings.file_type
@@ -38,7 +41,7 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 		bpy.ops.object.mode_set(mode='OBJECT')
 
 		# Check if an object is selected, if not, export collection instead
-		if bpy.context.object.select_get():
+		if bpy.context.object and bpy.context.object.select_get():
 			object_toggle = True
 			collection_toggle = False
 			file_name = bpy.context.active_object.name
@@ -47,9 +50,26 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 			collection_toggle = True
 			file_name = bpy.context.collection.name
 
+		# Create file format based on pipeline selection
 		file_format = "." + format.lower()
 
 		if format == "FBX":
+			# Push an undo state (seems easier than trying to re-select previously selected non-MESH objects)
+			bpy.ops.ed.undo_push()
+
+			# Apply all modifiers to MESH objects and convert "UVmap" attribute to UV map
+			for obj in bpy.context.selected_objects:
+				if obj.type == "MESH":
+					# Set active
+					bpy.context.view_layer.objects.active = obj
+
+					# Apply all modifiers
+					bpy.ops.object.apply_all_modifiers()
+
+					# Convert "UVMap" attribute to UV map data type (if it exists and is selected by default...python API seems pretty limited here?)
+					if obj.data.attributes.get("UVMap") and obj.data.attributes.active.name == "UVMap":
+						bpy.ops.geometry.attribute_convert(mode='UV_MAP')
+
 			bpy.ops.export_scene.fbx(
 				filepath=location + file_name + file_format,
 				check_existing=False, # Always overwrite existing files (dangerous...designed specifically for Unity delivery!)
@@ -94,6 +114,11 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 				batch_mode='OFF',
 				use_batch_own_dir=False,
 				use_metadata=True)
+			
+			# Undo the previously completed object modifications
+			bpy.ops.ed.undo()
+			bpy.ops.ed.undo()
+
 		elif format == "GLB":
 			bpy.ops.export_scene.gltf(
 				filepath=location + file_name + file_format,
@@ -148,9 +173,17 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 				export_displacement=False,
 				will_save_settings=False,
 				filter_glob='*.glb;*.gltf')
+
 		elif format == "STL":
+			# Push an undo state (seems easier than trying to re-select previously selected non-MESH objects)
+			bpy.ops.ed.undo_push()
+
+			# Deselect non-MESH objects first
+			for obj in bpy.context.selected_objects:
+				if obj.type != "MESH":
+					obj.select_set(False)
+
 			bpy.ops.export_mesh.stl(
-#				filepath=location + file_name + file_format,
 				filepath=location,
 				ascii=False,
 				check_existing=False, # Dangerous!
@@ -164,6 +197,9 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 				axis_forward='Y',
 				axis_up='Z',
 				filter_glob='*.stl')
+			
+			# Undo the previously completed object deselection
+			bpy.ops.ed.undo()
 
 		# Reset to original mode
 		bpy.ops.object.mode_set(mode=mode)
@@ -179,9 +215,9 @@ class vfDeliverySettings(bpy.types.PropertyGroup):
 		name='Pipeline',
 		description='Sets the format for delivery output',
 		items=[
-			('FBX', 'Unity FBX', 'Export FBX binary file for Unity'),
-			('GLB', 'ThreeJS GLB', 'Export GLTF compressed binary file for ThreeJS'),
-			('STL', 'Printing STL', 'Export individual STL file of each selected object for 3D printing')
+			('FBX', 'FBX — Unity3D', 'Export FBX binary file for Unity'),
+			('GLB', 'GLB — ThreeJS', 'Export GLTF compressed binary file for ThreeJS'),
+			('STL', 'STL — Printer', 'Export individual STL file of each selected object for 3D printing')
 			],
 		default='FBX')
 	file_location: bpy.props.StringProperty(
@@ -218,7 +254,7 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 			file_format = "." + context.scene.vf_delivery_settings.file_type.lower()
 			file_icon="FILE"
 
-			if bpy.context.object.select_get():
+			if bpy.context.object and bpy.context.object.select_get():
 				file_name = bpy.context.active_object.name + file_format
 				file_icon = "OUTLINER_OB_MESH"
 			else:
@@ -227,19 +263,20 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 
 			split = layout.split(factor=0.25, align=True)
 			col = split.column()
-			col.label(text="Pipeline:")
-			col.label(text="Export:")
+			col.label(text="Pipeline")
+			col.label(text="Export")
 
 			col = split.column()
 			col.prop(context.scene.vf_delivery_settings, 'file_type', text='')
 			if context.scene.vf_delivery_settings.file_type == "STL":
-				object_count = len(bpy.context.selected_objects)
+#				object_count = len(bpy.context.selected_objects)
+				object_count = [obj.type for obj in bpy.context.selected_objects].count("MESH")
 				if object_count == 0:
 					col.label(text="Select Object(s)")
 				elif object_count == 1:
-					col.operator(VFDELIVERY_OT_file.bl_idname, text=str(object_count) + " object", icon=file_icon)
+					col.operator(VFDELIVERY_OT_file.bl_idname, text=file_name, icon=file_icon)
 				else:
-					col.operator(VFDELIVERY_OT_file.bl_idname, text=str(object_count) + " objects", icon=file_icon)
+					col.operator(VFDELIVERY_OT_file.bl_idname, text=str(object_count) + " files", icon=file_icon)
 			else:
 				col.operator(VFDELIVERY_OT_file.bl_idname, text=file_name, icon=file_icon)
 
