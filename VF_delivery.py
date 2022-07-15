@@ -2,7 +2,7 @@ bl_info = {
 	"name": "VF Delivery",
 	"author": "John Einselen - Vectorform LLC",
 	"version": (0, 4),
-	"blender": (2, 80, 0),
+	"blender": (3, 2, 0),
 	"location": "Scene > VF Tools > Delivery",
 	"description": "Quickly export selected objects to a specified directory",
 	"warning": "inexperienced developer, use at your own risk",
@@ -269,7 +269,6 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 			col = split.column()
 			col.prop(context.scene.vf_delivery_settings, 'file_type', text='')
 			if context.scene.vf_delivery_settings.file_type == "STL":
-#				object_count = len(bpy.context.selected_objects)
 				object_count = [obj.type for obj in bpy.context.selected_objects].count("MESH")
 				if object_count == 0:
 					col.label(text="Select Object(s)")
