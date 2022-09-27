@@ -1,7 +1,7 @@
 bl_info = {
 	"name": "VF Delivery",
 	"author": "John Einselen - Vectorform LLC",
-	"version": (0, 4),
+	"version": (0, 4, 1),
 	"blender": (3, 2, 0),
 	"location": "Scene > VF Tools > Delivery",
 	"description": "Quickly export selected objects to a specified directory",
@@ -170,7 +170,6 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 				export_morph_tangent=False,
 				
 				export_lights=False,
-				export_displacement=False,
 				will_save_settings=False,
 				filter_glob='*.glb;*.gltf')
 
