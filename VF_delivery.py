@@ -231,6 +231,7 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 	bl_region_type = "UI"
 	bl_category = 'VF Tools'
 	bl_order = 0
+	bl_options = {'DEFAULT_CLOSED'}
 	bl_label = "Delivery"
 	bl_idname = "VFTOOLS_PT_delivery"
 
