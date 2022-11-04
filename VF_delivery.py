@@ -1,7 +1,7 @@
 bl_info = {
 	"name": "VF Delivery",
 	"author": "John Einselen - Vectorform LLC",
-	"version": (0, 5, 0),
+	"version": (0, 6, 1),
 	"blender": (3, 2, 0),
 	"location": "Scene > VF Tools > Delivery",
 	"description": "Quickly export selected objects to a specified directory",
@@ -13,6 +13,7 @@ bl_info = {
 import bpy
 from bpy.app.handlers import persistent
 import mathutils
+import numpy as np
 
 # With help from:
 # https://stackoverflow.com/questions/54464682/best-way-to-undo-previous-steps-in-a-series-of-steps
@@ -241,6 +242,36 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 				# Undo the collection object selection
 				bpy.ops.ed.undo()
 
+		elif format == "CSV":
+			# Save timeline position
+			frame_current = bpy.context.scene.frame_current
+
+			# Set variables
+			frame_start = bpy.context.scene.frame_start
+			frame_end = bpy.context.scene.frame_end
+			source_object = "something"
+			file_output = "file location" + "file name" + ".csv"
+			space = bpy.context.scene.vf_delivery_settings.csv_position
+
+			# Collect data
+			array = [["x","y","z"]]
+			for i in range(frame_start, frame_end + 1):
+				bpy.context.scene.frame_set(i)
+				loc, rot, scale = bpy.context.object.matrix_world.decompose() if space == "WORLD" else bpy.context.object.matrix_local.decompose()
+				array.append([loc.x, loc.y, loc.z])
+
+			# Save out CSV file
+			np.savetxt(
+				location + file_name + file_format,
+				array,
+				delimiter =",",
+				newline='\n',
+				fmt ='% s'
+				)
+
+			# Reset timeline position
+			bpy.context.scene.frame_set(frame_current)
+
 		# Reset to original mode
 		bpy.ops.object.mode_set(mode=mode)
 
@@ -259,6 +290,7 @@ class vfDeliverySettings(bpy.types.PropertyGroup):
 			('FBX', 'FBX — Unity3D', 'Export FBX binary file for Unity'),
 			('GLB', 'GLB — ThreeJS', 'Export GLTF compressed binary file for ThreeJS'),
 			('STL', 'STL — 3D Printing', 'Export individual STL file of each selected object for 3D printing'),
+			('CSV', 'CSV — Data Vis', 'Export CSV file of the selected object\'s position, rotation, and scale for all frames within the render range')
 			],
 		default='FBX')
 	file_location: bpy.props.StringProperty(
@@ -267,6 +299,22 @@ class vfDeliverySettings(bpy.types.PropertyGroup):
 		default="/",
 		maxlen=4096,
 		subtype="DIR_PATH")
+	csv_position: bpy.props.EnumProperty(
+		name='Position',
+		description='Sets local or world space coordinates',
+		items=[
+			('WORLD', 'World', 'World space'),
+			('LOCAL', 'Local', 'Local object space')
+			],
+		default='WORLD')
+	csv_rotation: bpy.props.EnumProperty(
+		name='Rotation',
+		description='Sets the formatting of rotation values',
+		items=[
+			('RAD', 'Radians', 'Output rotation in radians'),
+			('DEG', 'Degrees', 'Output rotation in degrees')
+			],
+		default='RAD')
 
 class VFTOOLS_PT_delivery(bpy.types.Panel):
 	bl_space_type = "VIEW_3D"
@@ -289,10 +337,7 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 
 	def draw(self, context):
 		try:
-			layout = self.layout
-			layout.use_property_decorate = False # No animation
-			layout.prop(context.scene.vf_delivery_settings, 'file_location', text='')
-
+			# Set up variables
 			file_format = "." + context.scene.vf_delivery_settings.file_type.lower()
 			file_icon="FILE"
 
@@ -303,23 +348,34 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 				file_name = bpy.context.collection.name + file_format
 				file_icon = "OUTLINER_COLLECTION"
 
-			split = layout.split(factor=0.25, align=True)
-			col = split.column()
-			col.label(text="Pipeline")
-			col.label(text="Export")
+			# UI Layout
+			layout = self.layout
+			layout.use_property_decorate = False # No animation
+			layout.prop(context.scene.vf_delivery_settings, 'file_location', text='')
 
-			col = split.column()
-			col.prop(context.scene.vf_delivery_settings, 'file_type', text='')
+			layout.prop(context.scene.vf_delivery_settings, 'file_type', text='')
 			if context.scene.vf_delivery_settings.file_type == "STL":
 				object_count = [obj.type for obj in bpy.context.selected_objects].count("MESH")
 				if object_count == 0:
-					col.label(text="Select Object(s)")
+					hold = layout.row()
+					hold.active = False
+					hold.enabled = False
+					hold.operator(VFDELIVERY_OT_file.bl_idname, text="No mesh selected", icon="X")
 				elif object_count == 1:
-					col.operator(VFDELIVERY_OT_file.bl_idname, text=file_name, icon=file_icon)
+					layout.operator(VFDELIVERY_OT_file.bl_idname, text=file_name, icon=file_icon)
 				else:
-					col.operator(VFDELIVERY_OT_file.bl_idname, text=str(object_count) + " files", icon=file_icon)
+					layout.operator(VFDELIVERY_OT_file.bl_idname, text=str(object_count) + " files", icon=file_icon)
+			elif context.scene.vf_delivery_settings.file_type == "CSV":
+				layout.prop(context.scene.vf_delivery_settings, 'csv_position', expand=True)
+				if len(bpy.context.selected_objects) == 1:
+					layout.operator(VFDELIVERY_OT_file.bl_idname, text=file_name, icon=file_icon)
+				else:
+					hold = layout.row()
+					hold.active = False
+					hold.enabled = False
+					hold.operator(VFDELIVERY_OT_file.bl_idname, text="select one object", icon="X")
 			else:
-				col.operator(VFDELIVERY_OT_file.bl_idname, text=file_name, icon=file_icon)
+				layout.operator(VFDELIVERY_OT_file.bl_idname, text=file_name, icon=file_icon)
 
 		except Exception as exc:
 			print(str(exc) + " | Error in VF Delivery panel")
