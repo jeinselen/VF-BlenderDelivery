@@ -1,7 +1,7 @@
 bl_info = {
 	"name": "VF Delivery",
 	"author": "John Einselen - Vectorform LLC",
-	"version": (0, 6, 1),
+	"version": (0, 6, 2),
 	"blender": (3, 2, 0),
 	"location": "Scene > VF Tools > Delivery",
 	"description": "Quickly export selected objects to a specified directory",
@@ -54,7 +54,47 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 		# Create file format based on pipeline selection
 		file_format = "." + format.lower()
 
-		if format == "FBX":
+		if format == "ABC":
+			if collection_toggle:
+				# Push an undo state (this was intended to reset the collection selection status, but doesn't really work)
+				bpy.ops.ed.undo_push()
+				for obj in bpy.context.collection.all_objects:
+					obj.select_set(True)
+
+			bpy.ops.wm.alembic_export(
+				filepath=location + file_name + file_format,
+				check_existing=False, # Always overwrite existing files
+				start=0,
+				end=0,
+				xsamples=1,
+				gsamples=1,
+				selected=True,
+				visible_objects_only=False,
+				flatten=False,
+				uvs=True,
+				packuv=False, # Changed from default to prevent UV map alteration
+				normals=True,
+				vcolors=True, # Changed from default to include vertex colors
+				orcos=True,
+				face_sets=False,
+				subdiv_schema=False,
+				apply_subdiv=False,
+				curves_as_mesh=False,
+				use_instancing=True,
+				global_scale=1.0,
+				triangulate=False,
+				quad_method='SHORTEST_DIAGONAL',
+				ngon_method='BEAUTY',
+				export_hair=True,
+				export_particles=True,
+				export_custom_properties=False, # Changed from default
+				evaluation_mode='RENDER')
+
+			if collection_toggle:
+				# Undo the collection object selection status
+				bpy.ops.ed.undo()
+
+		elif format == "FBX":
 			# Push an undo state (seems easier than trying to re-select previously selected non-MESH objects)
 			bpy.ops.ed.undo_push()
 
@@ -201,47 +241,6 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 			# Undo the previously completed object deselection
 			bpy.ops.ed.undo()
 
-		elif format == "ABC":
-			if collection_toggle:
-				# Push an undo state (seems easier than trying to re-select previously selected non-MESH objects)
-				bpy.ops.ed.undo_push()
-
-				for obj in bpy.context.collection.all_objects:
-					obj.select_set(True)
-
-			bpy.ops.wm.alembic_export(
-				filepath=location + file_name + file_format,
-				check_existing=False, # Always overwrite existing files
-				start=0,
-				end=0,
-				xsamples=1,
-				gsamples=1,
-				selected=True,
-				visible_objects_only=False,
-				flatten=False,
-				uvs=True,
-				packuv=False, # Changed from default to prevent UV map alteration
-				normals=True,
-				vcolors=True, # Changed from default to include vertex colors
-				orcos=True,
-				face_sets=False,
-				subdiv_schema=False,
-				apply_subdiv=False,
-				curves_as_mesh=False,
-				use_instancing=True,
-				global_scale=1.0,
-				triangulate=False,
-				quad_method='SHORTEST_DIAGONAL',
-				ngon_method='BEAUTY',
-				export_hair=True,
-				export_particles=True,
-				export_custom_properties=False, # Changed from default
-				evaluation_mode='RENDER')
-
-			if collection_toggle:
-				# Undo the collection object selection
-				bpy.ops.ed.undo()
-
 		elif format == "CSV":
 			# Save timeline position
 			frame_current = bpy.context.scene.frame_current
@@ -286,7 +285,7 @@ class vfDeliverySettings(bpy.types.PropertyGroup):
 		name='Pipeline',
 		description='Sets the format for delivery output',
 		items=[
-			('ABC', 'ABC — Mesh Sequence', 'Export Alembic binary file'),
+			('ABC', 'ABC — Static', 'Export Alembic binary file from frame 0'),
 			('FBX', 'FBX — Unity3D', 'Export FBX binary file for Unity'),
 			('GLB', 'GLB — ThreeJS', 'Export GLTF compressed binary file for ThreeJS'),
 			('STL', 'STL — 3D Printing', 'Export individual STL file of each selected object for 3D printing'),
