@@ -1,7 +1,7 @@
 bl_info = {
 	"name": "VF Delivery",
 	"author": "John Einselen - Vectorform LLC",
-	"version": (0, 7, 0),
+	"version": (0, 7, 1),
 	"blender": (3, 3, 1),
 	"location": "Scene > VF Tools > Delivery",
 	"description": "Quickly export selected objects to a specified directory",
@@ -293,6 +293,23 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 		return {'FINISHED'}
 
 ###########################################################################
+# Global user preferences and UI rendering class
+
+class vfDeliveryPreferences(bpy.types.AddonPreferences):
+	bl_idname = __name__
+
+	# Global Variables
+	enable_uvmap_experimental: bpy.props.BoolProperty(
+		name='Enable experimental UVMap conversion',
+		description='Attempts to convert the first named attribute output from a Geometry Nodes modifier into a UV map recognisable by file exporters',
+		default=False)
+
+	# User Interface
+	def draw(self, context):
+		layout = self.layout
+		layout.prop(self, "enable_uvmap_experimental")
+
+###########################################################################
 # Project settings and UI rendering classes
 
 class vfDeliverySettings(bpy.types.PropertyGroup):
@@ -317,6 +334,14 @@ class vfDeliverySettings(bpy.types.PropertyGroup):
 		name="Convert UVMap Attribute",
 		description="Attempts to export UVMap data by applying all modifiers and converting any \"UVMap\" named attributes to an actual UV map",
 		default=False)
+	file_group: bpy.props.EnumProperty(
+		name='Position',
+		description='Sets local or world space coordinates',
+		items=[
+			('COMBINED', 'Combined', 'Export selection in one file'),
+			('INDIVIDUAL', 'Individual', 'Export selection as individual files')
+			],
+		default='COMBINED')
 	csv_position: bpy.props.EnumProperty(
 		name='Position',
 		description='Sets local or world space coordinates',
@@ -358,65 +383,95 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 			# Set up variables
 			file_format = "." + context.scene.vf_delivery_settings.file_type.lower()
 			button_enable = True
-			button_title = ''
 			button_icon = "FILE"
-			show_uvmap = True
+			button_title = ''
+			show_group = True
+			show_uvmap = bpy.context.preferences.addons['VF_delivery'].preferences.enable_uvmap_experimental
 			show_csv = False
 			object_count = 0
 
-			# General settings
+			# Update variables based on object selection status
 			if bpy.context.object and bpy.context.object.select_get():
-				button_title = bpy.context.active_object.name + file_format
-				button_icon = "OUTLINER_OB_MESH"
-				if context.scene.vf_delivery_settings.file_type == "STL":
+				# Count any items for CSV, count only meshes for everything else
+				if context.scene.vf_delivery_settings.file_type == "CSV":
+					object_count = len(bpy.context.selected_objects)
+				else:
 					object_count = [obj.type for obj in bpy.context.selected_objects].count("MESH")
+
+				# Button icon
+				button_icon = "OUTLINER_OB_MESH"
+
+				# Button title
+				if object_count == 1 or (object_count > 1 and context.scene.vf_delivery_settings.file_group == "COMBINED" and not context.scene.vf_delivery_settings.file_type == "CSV"):
+					button_title = bpy.context.active_object.name + file_format
+				else:
+					button_title = str(object_count) + " files"
+
+			# Update variables based on active collection if no object is selected
 			else:
-				button_title = bpy.context.collection.name + file_format
-				button_icon = "OUTLINER_COLLECTION"
-				if context.scene.vf_delivery_settings.file_type == "STL":
+				# Count any items within the collection for CSV, count only meshes for everything else
+				if context.scene.vf_delivery_settings.file_type == "CSV":
+					object_count = len(bpy.context.collection.all_objects)
+				else:
 					object_count = [obj.type for obj in bpy.context.collection.all_objects].count("MESH")
 
-			# Special cases
-			if context.scene.vf_delivery_settings.file_type == "STL":
-				show_uvmap = False
-				if object_count == 0:
-					button_enable = False
-					button_title = "No mesh selected"
-					button_icon = "X"
-				elif object_count > 1:
+				# Button icon
+				button_icon = "OUTLINER_COLLECTION"
+
+				# Button title
+				if context.scene.vf_delivery_settings.file_group == "COMBINED" and not context.scene.vf_delivery_settings.file_type == "CSV":
+					button_title = bpy.context.collection.name + file_format
+				else:
 					button_title = str(object_count) + " files"
-			elif context.scene.vf_delivery_settings.file_type == "CSV":
+
+			# If no usable items (CSV) or meshes (everything else) is found, disable the button
+			# Keeping the message generic allows this to be used universally
+			if object_count == 0:
+				button_enable = False
+				button_icon = "X"
+#				button_title = "No useable selection"
+#				button_title = "select item(s)"
+				if context.scene.vf_delivery_settings.file_type == "CSV":
+					button_title = "Select object"
+				else:
+					button_title = "Select mesh"
+
+			# Specific display cases
+			if context.scene.vf_delivery_settings.file_type == "CSV":
+				show_group = False
 				show_uvmap = False
 				show_csv = True
-#				if len(bpy.context.selected_objects) != 1:
-				if not bpy.context.object.select_get():
-					button_enable = False
-					button_title = "Select an object"
-					button_icon = "X"
-			else:
-				show_uvmap = True
+			elif context.scene.vf_delivery_settings.file_type == "STL":
+				show_uvmap = False
 
 			# UI Layout
 			layout = self.layout
 			layout.use_property_decorate = False # No animation
+
 			layout.prop(context.scene.vf_delivery_settings, 'file_location', text='')
 			layout.prop(context.scene.vf_delivery_settings, 'file_type', text='')
+
 			if show_uvmap:
-				layout.prop(context.scene.vf_delivery_settings, 'uvmap_experimental') # icon="ERROR" turns this into what looks like a button, which is confusing
+				layout.prop(context.scene.vf_delivery_settings, 'uvmap_experimental')
+
+			if show_group:
+				layout.prop(context.scene.vf_delivery_settings, 'file_group', expand=True)
+
 			if show_csv:
 				layout.prop(context.scene.vf_delivery_settings, 'csv_position', expand=True)
+
 			if button_enable:
 				layout.operator(VFDELIVERY_OT_file.bl_idname, text=button_title, icon=button_icon)
 			else:
-				hold = layout.row()
-				hold.active = False
-				hold.enabled = False
-				hold.operator(VFDELIVERY_OT_file.bl_idname, text=button_title, icon=button_icon)
+				disabled = layout.row()
+				disabled.active = False
+				disabled.enabled = False
+				disabled.operator(VFDELIVERY_OT_file.bl_idname, text=button_title, icon=button_icon)
 
 		except Exception as exc:
 			print(str(exc) + " | Error in VF Delivery panel")
 
-classes = (VFDELIVERY_OT_file, vfDeliverySettings, VFTOOLS_PT_delivery)
+classes = (VFDELIVERY_OT_file, vfDeliveryPreferences, vfDeliverySettings, VFTOOLS_PT_delivery)
 
 ###########################################################################
 # Addon registration functions
@@ -433,4 +488,3 @@ def unregister():
 
 if __name__ == "__main__":
 	register()
-	
