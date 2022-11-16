@@ -1,7 +1,7 @@
 bl_info = {
 	"name": "VF Delivery",
 	"author": "John Einselen - Vectorform LLC",
-	"version": (0, 7, 4),
+	"version": (0, 7, 5),
 	"blender": (3, 3, 1),
 	"location": "Scene > VF Tools > Delivery",
 	"description": "Quickly export selected objects to a specified directory",
@@ -34,7 +34,7 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 		# Set up local variables
 		location = bpy.context.scene.vf_delivery_settings.file_location
 		format = bpy.context.scene.vf_delivery_settings.file_type
-		combined = True if bpy.context.scene.vf_delivery_settings.file_group == "COMBINED" else False
+		combined = True if bpy.context.scene.vf_delivery_settings.file_grouping == "COMBINED" else False
 		file_format = "." + format.lower()
 		# Experimental UV map
 		uvmap_experimental = bpy.context.scene.vf_delivery_settings.uvmap_experimental
@@ -349,9 +349,9 @@ class vfDeliverySettings(bpy.types.PropertyGroup):
 		name="Convert UVMap Attribute",
 		description="Attempts to export UVMap data by applying all modifiers and converting any \"UVMap\" named attributes to an actual UV map",
 		default=False)
-	file_group: bpy.props.EnumProperty(
-		name='Position',
-		description='Sets local or world space coordinates',
+	file_grouping: bpy.props.EnumProperty(
+		name='Grouping',
+		description='Sets combined or individual file outputs',
 		items=[
 			('COMBINED', 'Combined', 'Export selection in one file'),
 			('INDIVIDUAL', 'Individual', 'Export selection as individual files')
@@ -417,10 +417,10 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 				button_icon = "OUTLINER_OB_MESH"
 
 				# Button title
-				if (object_count > 1 and context.scene.vf_delivery_settings.file_group == "COMBINED" and not context.scene.vf_delivery_settings.file_type == "CSV"):
+				if (object_count > 1 and context.scene.vf_delivery_settings.file_grouping == "COMBINED" and not context.scene.vf_delivery_settings.file_type == "CSV"):
 					button_title = bpy.context.active_object.name + file_format
 				elif object_count == 1:
-					if bpy.context.active_object.type != "MESH" and context.scene.vf_delivery_settings.file_group == "INDIVIDUAL":
+					if bpy.context.active_object.type != "MESH" and context.scene.vf_delivery_settings.file_grouping == "INDIVIDUAL":
 						for obj in bpy.context.selected_objects:
 							if obj.type == "MESH":
 								button_title = obj.name + file_format
@@ -441,7 +441,7 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 				button_icon = "OUTLINER_COLLECTION"
 
 				# Button title
-				if context.scene.vf_delivery_settings.file_group == "COMBINED" and not context.scene.vf_delivery_settings.file_type == "CSV":
+				if context.scene.vf_delivery_settings.file_grouping == "COMBINED" and not context.scene.vf_delivery_settings.file_type == "CSV":
 					button_title = bpy.context.collection.name + file_format
 				else:
 					button_title = str(object_count) + " files"
@@ -477,7 +477,7 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 				layout.prop(context.scene.vf_delivery_settings, 'uvmap_experimental')
 
 			if show_group:
-				layout.prop(context.scene.vf_delivery_settings, 'file_group', expand=True)
+				layout.prop(context.scene.vf_delivery_settings, 'file_grouping', expand=True)
 
 			if show_csv:
 				layout.prop(context.scene.vf_delivery_settings, 'csv_position', expand=True)
