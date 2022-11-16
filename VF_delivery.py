@@ -1,7 +1,7 @@
 bl_info = {
 	"name": "VF Delivery",
 	"author": "John Einselen - Vectorform LLC",
-	"version": (0, 7, 3),
+	"version": (0, 7, 4),
 	"blender": (3, 3, 1),
 	"location": "Scene > VF Tools > Delivery",
 	"description": "Quickly export selected objects to a specified directory",
@@ -417,8 +417,15 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 				button_icon = "OUTLINER_OB_MESH"
 
 				# Button title
-				if object_count == 1 or (object_count > 1 and context.scene.vf_delivery_settings.file_group == "COMBINED" and not context.scene.vf_delivery_settings.file_type == "CSV"):
+				if (object_count > 1 and context.scene.vf_delivery_settings.file_group == "COMBINED" and not context.scene.vf_delivery_settings.file_type == "CSV"):
 					button_title = bpy.context.active_object.name + file_format
+				elif object_count == 1:
+					if bpy.context.active_object.type != "MESH" and context.scene.vf_delivery_settings.file_group == "INDIVIDUAL":
+						for obj in bpy.context.selected_objects:
+							if obj.type == "MESH":
+								button_title = obj.name + file_format
+					else:
+						button_title = bpy.context.active_object.name + file_format
 				else:
 					button_title = str(object_count) + " files"
 
