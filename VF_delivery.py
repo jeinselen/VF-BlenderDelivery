@@ -1,7 +1,7 @@
 bl_info = {
 	"name": "VF Delivery",
 	"author": "John Einselen - Vectorform LLC",
-	"version": (0, 6, 3),
+	"version": (0, 7, 0),
 	"blender": (3, 3, 1),
 	"location": "Scene > VF Tools > Delivery",
 	"description": "Quickly export selected objects to a specified directory",
@@ -45,11 +45,11 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 		if bpy.context.object and bpy.context.object.select_get():
 			object_toggle = True
 			collection_toggle = False
-			file_name = bpy.context.active_object.name
+			button_title = bpy.context.active_object.name
 		else:
 			object_toggle = False
 			collection_toggle = True
-			file_name = bpy.context.collection.name
+			button_title = bpy.context.collection.name
 
 		# Create file format based on pipeline selection
 		file_format = "." + format.lower()
@@ -62,7 +62,7 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 					obj.select_set(True)
 
 			bpy.ops.wm.alembic_export(
-				filepath=location + file_name + file_format,
+				filepath=location + button_title + file_format,
 				check_existing=False, # Always overwrite existing files
 				start=0,
 				end=0,
@@ -125,7 +125,7 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 						bpy.ops.geometry.attribute_convert(mode='UV_MAP')
 
 			bpy.ops.export_scene.fbx(
-				filepath=location + file_name + file_format,
+				filepath=location + button_title + file_format,
 				check_existing=False, # Always overwrite existing files (dangerous...designed specifically for Unity delivery!)
 				use_selection=object_toggle, # If an object is selected, export only selected objects
 				use_visible=True,
@@ -177,7 +177,7 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 
 		elif format == "GLB":
 			bpy.ops.export_scene.gltf(
-				filepath=location + file_name + file_format,
+				filepath=location + button_title + file_format,
 				check_existing=False, # Always overwrite existing files (dangerous...designed specifically for ThreeJS delivery!)
 				export_format='GLB',
 				export_copyright='',
@@ -276,7 +276,7 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 
 			# Save out CSV file
 			np.savetxt(
-				location + file_name + file_format,
+				location + button_title + file_format,
 				array,
 				delimiter =",",
 				newline='\n',
@@ -313,6 +313,10 @@ class vfDeliverySettings(bpy.types.PropertyGroup):
 		default="/",
 		maxlen=4096,
 		subtype="DIR_PATH")
+	uvmap_experimental: bpy.props.BoolProperty(
+		name="Convert UVMap Attribute",
+		description="Attempts to export UVMap data by applying all modifiers and converting any \"UVMap\" named attributes to an actual UV map",
+		default=False)
 	csv_position: bpy.props.EnumProperty(
 		name='Position',
 		description='Sets local or world space coordinates',
@@ -321,14 +325,14 @@ class vfDeliverySettings(bpy.types.PropertyGroup):
 			('LOCAL', 'Local', 'Local object space')
 			],
 		default='WORLD')
-	csv_rotation: bpy.props.EnumProperty(
-		name='Rotation',
-		description='Sets the formatting of rotation values',
-		items=[
-			('RAD', 'Radians', 'Output rotation in radians'),
-			('DEG', 'Degrees', 'Output rotation in degrees')
-			],
-		default='RAD')
+#	csv_rotation: bpy.props.EnumProperty(
+#		name='Rotation',
+#		description='Sets the formatting of rotation values',
+#		items=[
+#			('RAD', 'Radians', 'Output rotation in radians'),
+#			('DEG', 'Degrees', 'Output rotation in degrees')
+#			],
+#		default='RAD')
 
 class VFTOOLS_PT_delivery(bpy.types.Panel):
 	bl_space_type = "VIEW_3D"
@@ -353,43 +357,61 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 		try:
 			# Set up variables
 			file_format = "." + context.scene.vf_delivery_settings.file_type.lower()
-			file_icon="FILE"
+			button_enable = True
+			button_title = ''
+			button_icon = "FILE"
+			show_uvmap = True
+			show_csv = False
+			object_count = 0
 
+			# General settings
 			if bpy.context.object and bpy.context.object.select_get():
-				file_name = bpy.context.active_object.name + file_format
-				file_icon = "OUTLINER_OB_MESH"
+				button_title = bpy.context.active_object.name + file_format
+				button_icon = "OUTLINER_OB_MESH"
+				if context.scene.vf_delivery_settings.file_type == "STL":
+					object_count = [obj.type for obj in bpy.context.selected_objects].count("MESH")
 			else:
-				file_name = bpy.context.collection.name + file_format
-				file_icon = "OUTLINER_COLLECTION"
+				button_title = bpy.context.collection.name + file_format
+				button_icon = "OUTLINER_COLLECTION"
+				if context.scene.vf_delivery_settings.file_type == "STL":
+					object_count = [obj.type for obj in bpy.context.collection.all_objects].count("MESH")
+
+			# Special cases
+			if context.scene.vf_delivery_settings.file_type == "STL":
+				show_uvmap = False
+				if object_count == 0:
+					button_enable = False
+					button_title = "No mesh selected"
+					button_icon = "X"
+				elif object_count > 1:
+					button_title = str(object_count) + " files"
+			elif context.scene.vf_delivery_settings.file_type == "CSV":
+				show_uvmap = False
+				show_csv = True
+#				if len(bpy.context.selected_objects) != 1:
+				if not bpy.context.object.select_get():
+					button_enable = False
+					button_title = "Select an object"
+					button_icon = "X"
+			else:
+				show_uvmap = True
 
 			# UI Layout
 			layout = self.layout
 			layout.use_property_decorate = False # No animation
 			layout.prop(context.scene.vf_delivery_settings, 'file_location', text='')
-
 			layout.prop(context.scene.vf_delivery_settings, 'file_type', text='')
-			if context.scene.vf_delivery_settings.file_type == "STL":
-				object_count = [obj.type for obj in bpy.context.selected_objects].count("MESH")
-				if object_count == 0:
-					hold = layout.row()
-					hold.active = False
-					hold.enabled = False
-					hold.operator(VFDELIVERY_OT_file.bl_idname, text="No mesh selected", icon="X")
-				elif object_count == 1:
-					layout.operator(VFDELIVERY_OT_file.bl_idname, text=file_name, icon=file_icon)
-				else:
-					layout.operator(VFDELIVERY_OT_file.bl_idname, text=str(object_count) + " files", icon=file_icon)
-			elif context.scene.vf_delivery_settings.file_type == "CSV":
+			if show_uvmap:
+				layout.prop(context.scene.vf_delivery_settings, 'uvmap_experimental') # icon="ERROR" turns this into what looks like a button, which is confusing
+			if show_csv:
 				layout.prop(context.scene.vf_delivery_settings, 'csv_position', expand=True)
-				if len(bpy.context.selected_objects) == 1:
-					layout.operator(VFDELIVERY_OT_file.bl_idname, text=file_name, icon=file_icon)
-				else:
-					hold = layout.row()
-					hold.active = False
-					hold.enabled = False
-					hold.operator(VFDELIVERY_OT_file.bl_idname, text="select one object", icon="X")
+			if button_enable:
+				layout.operator(VFDELIVERY_OT_file.bl_idname, text=button_title, icon=button_icon)
 			else:
-				layout.operator(VFDELIVERY_OT_file.bl_idname, text=file_name, icon=file_icon)
+				hold = layout.row()
+				hold.active = False
+				hold.enabled = False
+				hold.operator(VFDELIVERY_OT_file.bl_idname, text=button_title, icon=button_icon)
 
 		except Exception as exc:
 			print(str(exc) + " | Error in VF Delivery panel")
