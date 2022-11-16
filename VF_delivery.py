@@ -1,7 +1,7 @@
 bl_info = {
 	"name": "VF Delivery",
 	"author": "John Einselen - Vectorform LLC",
-	"version": (0, 7, 2),
+	"version": (0, 7, 3),
 	"blender": (3, 3, 1),
 	"location": "Scene > VF Tools > Delivery",
 	"description": "Quickly export selected objects to a specified directory",
@@ -251,20 +251,14 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 		# Begin secondary export section (formats that do not support UV maps)
 
 		elif format == "STL":
-			# Push an undo state (seems easier than trying to re-select previously selected non-MESH objects)
-			bpy.ops.ed.undo_push()
-
-			# Deselect non-MESH objects first
-			for obj in bpy.context.selected_objects:
-				if obj.type != "MESH":
-					obj.select_set(False)
-
+			batch = 'OFF' if combined else 'OBJECT'
+			output = location + file_name + file_format if combined else location
 			bpy.ops.export_mesh.stl(
-				filepath=location,
+				filepath=output,
 				ascii=False,
 				check_existing=False, # Dangerous!
 				use_selection=True,
-				batch_mode='OBJECT',
+				batch_mode=batch,
 
 				global_scale=1.0,
 				use_scene_unit=False,
@@ -274,9 +268,6 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 				axis_up='Z',
 				filter_glob='*.stl')
 
-			# Undo the previously completed object deselection
-			bpy.ops.ed.undo()
-
 		elif format == "CSV":
 			# Save timeline position
 			frame_current = bpy.context.scene.frame_current
@@ -284,25 +275,24 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 			# Set variables
 			frame_start = bpy.context.scene.frame_start
 			frame_end = bpy.context.scene.frame_end
-			source_object = "something"
-			file_output = "file location" + "file name" + ".csv"
 			space = bpy.context.scene.vf_delivery_settings.csv_position
 
-			# Collect data
-			array = [["x","y","z"]]
-			for i in range(frame_start, frame_end + 1):
-				bpy.context.scene.frame_set(i)
-				loc, rot, scale = bpy.context.object.matrix_world.decompose() if space == "WORLD" else bpy.context.object.matrix_local.decompose()
-				array.append([loc.x, loc.y, loc.z])
+			for obj in bpy.context.selected_objects:
+				# Collect data
+				array = [["x","y","z"]]
+				for i in range(frame_start, frame_end + 1):
+					bpy.context.scene.frame_set(i)
+					loc, rot, scale = obj.matrix_world.decompose() if space == "WORLD" else obj.matrix_local.decompose()
+					array.append([loc.x, loc.y, loc.z])
 
-			# Save out CSV file
-			np.savetxt(
-				location + button_title + file_format,
-				array,
-				delimiter =",",
-				newline='\n',
-				fmt ='% s'
-				)
+				# Save out CSV file
+				np.savetxt(
+					location + obj.name + file_format,
+					array,
+					delimiter =",",
+					newline='\n',
+					fmt ='% s'
+					)
 
 			# Reset timeline position
 			bpy.context.scene.frame_set(frame_current)
