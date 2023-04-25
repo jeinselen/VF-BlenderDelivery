@@ -46,24 +46,17 @@ Export shortcuts for specific production pipelines. Supports Unity 3D (FBX), Thr
 
 ![screenshot of the Blender 3D view interface with the add-on installed, showing "STL — 3D Printing" selected](images/screenshot-stl.png)
 
-### Experimental
-
-- `Convert UVMap Attribute` will only appear in the main interface if `Enabled experimental UVMap conversion` is checked in the Blender Preferences
-	- **WARNING** — This is potentially dangerous! The undo sequence after processing each file may mess something up and you could lose critical project data if it fails to complete correctly and the project is saved with objects that no longer have editable modifiers
-	- This option enables _experimental_ UVMap support for named attributes; it loops through every selected object and applies all modifiers, converting the "UVMap" named attribute into an actual UV map that can be seen by file exporters
-	- This known Blender limitation (3.3.x and previous) has been discussed in the developer portal page [T85962](https://developer.blender.org/T85962) with progress tracked in page [D14365](https://developer.blender.org/D14365)
-
-![screenshot of the Blender 3D preferences window with the add-on installed and "enable experimental UVMap conversion" checked](images/screenshot-prefs.png)
-
-- Requirements to use this feature:
-	- The object(s) being exported must have a geometry node modifier that preserves or outputs a named attribute called `UVMap` containing vec2 or vec4 data (only the first two values will be retained; Blender does not support 4-channel UV maps like Unity)
-	- The `UVMap` named attribute must be the default active (first and most likely only) attribute post-application of all modifiers (it may need to be the _only_ named attribute depending on how they sort)
-	- Objects cannot share the same mesh resource with another object, as it will prevent automated application of modifiers
-
-UVMap example file: [experimental-uvmap-conversion.blend.zip](https://github.com/jeinselenVF/VF-BlenderDelivery/raw/main/files/experimental-uvmap-conversion.blend.zip)
-
 ## Known Limitations
 
-- There are no plans to add significant customisation to the exports. This is designed for specific pipelines at Vectorform, and if it doesn't fit your use case, the best option is to fork it and make it your own
-- Experimental conversion of Geometry Nodes named attributes into UV maps really is a hacky workaround that doesn't even have proper Python API support, making it all the more difficult to implement reliably; the best option is to wait for Blender 3.4 or later to implement fully compatible UV data support across the board (from modelling and Geometry Nodes through all the export extensions)
+- All selected `curve`, `mesh`, `metaball`, `surface`, and `text` objects will be included by default, but not all exporters support them to the same extent:
+	- `ABC` format will export `mesh` and `metaball` objects as meshes, while `curve` objects will only include the original curve (regardless of extrusion, bevel, or geometry nodes based conversion to a mesh), and `surface` and `text` objects will only be included as empty locators
+	- `FBX` exports all elements as meshes, including converting non-meshed curves into point arrays using the curve sampling resolution (the line itself is lost, only the positions along that line are preserved)
+	- `GLB` will export `curve` (if extruded or beveled), `mesh`, `surface`, and `text` objects as meshes, but non-mesh `curve` objects, `curve` objects that are converted to mesh objects via geometry nodes, and `metaball` objects will be included only as empty locators
+	- `OBJ` exports all elements as meshes, except for `curve` objects without any mesh component (no extrusion, bevel, or geometry nodes conversion to a mesh) which are ignored entirely (the OBJ format doesn't support empty locators)
+	- `STL` like the OBJ format, this exports all elements as meshes except for non-meshed curves (curve objects without any extrusion, bevel, or geometry nodes conversion to a mesh)
+	- Because there may be situations where empty locators or ignoring unsupported elements may be the preferred result, no warning will be given for "unsupported" combinations of object type and export format
+- Experimental conversion of Geometry Nodes named attributes into UV maps was a really hacky workaround for versions of Blender prior to 3.5.x, and has been removed thanks to the gradual addition of native 2D Vector and UV support in Geometry Nodes
+	- Using the `Store Attribute` node with a `2D Vector` data type, `Face Corner` domain, and `UVMap` attribute name will successfully export a UV map (tested with FBX, GLB, and OBJ formats)
+	- As of Blender 3.5.0, using an Output Attribute with `Vector` data type, `Face Corner` domain, and setting the output field to `UVMap` in the modifier panel _does not work_ (tested with FBX, GLB, and OBJ formats)
+- There are no plans to add significant customisation to the exports. This plugin is designed for specific pipelines at Vectorform, and if it doesn't fit your use case, the best option is to fork the project and make it your own
 - This software is provided without guarantee of usability or safety, use at your own risk

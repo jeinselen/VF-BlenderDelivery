@@ -1,7 +1,7 @@
 bl_info = {
 	"name": "VF Delivery",
 	"author": "John Einselen - Vectorform LLC",
-	"version": (0, 8, 0),
+	"version": (0, 9, 0),
 	"blender": (3, 3, 1),
 	"location": "Scene > VF Tools > Delivery",
 	"description": "Quickly export selected objects to a specified directory",
@@ -21,6 +21,10 @@ import numpy as np
 # https://blender.stackexchange.com/questions/200341/apply-modifiers-in-all-objects-at-once
 # https://github.com/CheeryLee/blender_apply_modifiers/blob/master/apply_modifiers.py
 
+# Define allowed object types
+VF_delivery_object_types = ['CURVE', 'MESH', 'META', 'SURFACE', 'FONT']
+# Not all types are supported by all exporters, see the GitHub documentation for more details
+
 ###########################################################################
 # Main class
 
@@ -36,18 +40,16 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 		format = bpy.context.scene.vf_delivery_settings.file_type
 		combined = True if bpy.context.scene.vf_delivery_settings.file_grouping == "COMBINED" else False
 		file_format = "." + format.lower()
-		# Experimental UV map
-		uvmap_experimental = bpy.context.scene.vf_delivery_settings.uvmap_experimental
+		active_object = bpy.context.active_object
 		
-		# Save current mode
-		mode = bpy.context.active_object.mode
-		
-		# Override mode to OBJECT
-		bpy.ops.object.mode_set(mode = 'OBJECT')
-		
+		# Save then override the current mode to OBJECT
+		if active_object is not None:
+			object_mode = active_object.mode
+			bpy.ops.object.mode_set(mode = 'OBJECT')
+				
 		# Check if an object is selected, if not, convert selected collection into object selection
 		if bpy.context.object and bpy.context.object.select_get():
-			file_name = bpy.context.active_object.name
+			file_name = active_object.name
 		else:
 			file_name = bpy.context.collection.name
 			for obj in bpy.context.collection.all_objects:
@@ -59,55 +61,30 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 			
 			# Deselect any non-mesh objects
 			for obj in bpy.context.selected_objects:
-				if obj.type != "MESH":
+				if obj.type not in VF_delivery_object_types:
 					obj.select_set(False)
 					
 		# Begin primary export section (formats that support UV maps)
 		if format == "ABC" or format == "FBX" or format == "GLB" or format == "OBJ":
-			# Push an undo state (seems easier than trying to re-select previously selected non-MESH objects)
-			# But this isn't working, right? Sigh...
-			# Track number of undo steps to retrace after export is complete
+			# Push an undo state (easier than trying to re-select previously selected non-MESH objects?)
 			bpy.ops.ed.undo_push()
+			# Track number of undo steps to retrace after export is complete
 			undo_steps = 1
 			
-			if bpy.context.preferences.addons['VF_delivery'].preferences.enable_uvmap_experimental and uvmap_experimental:
-				# Geometry Nodes (as of Blender 3.3) does not support UVMap export because they exist only as an incompatible named attribute
-				# To work around this issue all modifiers must be applied to meshes and any "UVmap" named attribute converted into a valid UV map
-				for obj in bpy.context.selected_objects:
-					if obj.type == "MESH":
-						# Set active
-						bpy.context.view_layer.objects.active = obj
-						
-						# Apply all modifiers
-						if len(obj.modifiers) > 0:
-							bpy.ops.ed.undo_push()
-							undo_steps += 1
-							bpy.ops.object.apply_all_modifiers()
-							
-						# Convert "UVMap" attribute to UV map data type
-						# If it exists and is selected by default...python API seems very limited here
-						if obj.data.attributes.get("UVMap") and obj.data.attributes.active.name == "UVMap":
-							bpy.ops.ed.undo_push()
-							undo_steps += 1
-							bpy.ops.geometry.attribute_convert(mode = 'UV_MAP')
-							
 			# Loop through each of the selected objects
 			# But only set individual selections if file export is set to individual
 			# Otherwise loop once and exit (see the if statement at the very end)
 			for obj in bpy.context.selected_objects:
 				if not combined:
-#					print("INDIVIDUAL")
-#					print("selected: " + str(len(bpy.context.selected_objects)))
 					# deselect everything
 					for selobj in bpy.context.selected_objects:
 						selobj.select_set(False)
 					# select individual object
 					obj.select_set(True)
 					file_name = obj.name
-#					print("selected: " + str(len(bpy.context.selected_objects)))
-					
+					# Note to future self; you probably missed the comment block just above. Please stop freaking out. When combined is true the loop is exited after the first export pass. You can stop frantically scrolling for multi-export errors, you'll just get to the end of this section and figure out the solution is already implemented. Again.
+				
 				if format == "ABC":
-#					print("EXPORT: ABC")
 					bpy.ops.wm.alembic_export(
 						filepath = location + file_name + file_format,
 						check_existing = False, # Always overwrite existing files
@@ -138,7 +115,6 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 						evaluation_mode = 'RENDER')
 					
 				elif format == "FBX":
-#					print("EXPORT: FBX")
 					bpy.ops.export_scene.fbx(
 						filepath = location + file_name + file_format,
 						check_existing = False, # Always overwrite existing files
@@ -185,7 +161,6 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 						use_metadata = True)
 					
 				elif format == "GLB":
-#					print("EXPORT: GLB")
 					bpy.ops.export_scene.gltf(
 						filepath = location + file_name + file_format,
 						check_existing = False, # Always overwrite existing files
@@ -240,7 +215,6 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 						filter_glob = '*.glb;*.gltf')
 					
 				elif format == "OBJ":
-#					print("EXPORT: OBJ")
 					bpy.ops.export_scene.obj(
 						filepath = location + file_name + file_format,
 						check_existing = False, # Always overwrite existing files
@@ -330,28 +304,12 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 			bpy.ops.ed.undo()
 			
 		# Reset to original mode
-		bpy.ops.object.mode_set(mode = mode)
+		if active_object is not None:
+			bpy.ops.object.mode_set(mode = object_mode)
 		
 		# Done
 		return {'FINISHED'}
-	
-###########################################################################
-# Global user preferences and UI rendering class
 
-class vfDeliveryPreferences(bpy.types.AddonPreferences):
-	bl_idname = __name__
-	
-	# Global Variables
-	enable_uvmap_experimental: bpy.props.BoolProperty(
-		name = 'Enable experimental UVMap conversion',
-		description = 'Attempts to convert the first named attribute output from a Geometry Nodes modifier into a UV map recognisable by file exporters',
-		default = False)
-	
-	# User Interface
-	def draw(self, context):
-		layout = self.layout
-		layout.prop(self, "enable_uvmap_experimental")
-		
 ###########################################################################
 # Project settings and UI rendering classes
 
@@ -374,10 +332,6 @@ class vfDeliverySettings(bpy.types.PropertyGroup):
 		default = "/",
 		maxlen = 4096,
 		subtype = "DIR_PATH")
-	uvmap_experimental: bpy.props.BoolProperty(
-		name = "Convert UVMap Attribute",
-		description = "Attempts to export UVMap data by applying all modifiers and converting any \"UVMap\" named attributes to an actual UV map",
-		default = False)
 	file_grouping: bpy.props.EnumProperty(
 		name = 'Grouping',
 		description = 'Sets combined or individual file outputs',
@@ -430,7 +384,6 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 			button_icon = "FILE"
 			button_title = ''
 			show_group = True
-			show_uvmap = bpy.context.preferences.addons['VF_delivery'].preferences.enable_uvmap_experimental
 			show_csv = False
 			object_count = 0
 			
@@ -440,8 +393,8 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 				if context.scene.vf_delivery_settings.file_type == "CSV":
 					object_count = len(bpy.context.selected_objects)
 				else:
-					object_count = [obj.type for obj in bpy.context.selected_objects].count("MESH")
-					
+					object_count = len([obj for obj in bpy.context.selected_objects if obj.type in VF_delivery_object_types])
+				
 				# Button icon
 				button_icon = "OUTLINER_OB_MESH"
 				
@@ -449,9 +402,9 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 				if (object_count > 1 and context.scene.vf_delivery_settings.file_grouping == "COMBINED" and not context.scene.vf_delivery_settings.file_type == "CSV"):
 					button_title = bpy.context.active_object.name + file_format
 				elif object_count == 1:
-					if bpy.context.active_object.type != "MESH" and context.scene.vf_delivery_settings.file_grouping == "INDIVIDUAL":
+					if bpy.context.active_object.type not in VF_delivery_object_types and context.scene.vf_delivery_settings.file_grouping == "INDIVIDUAL":
 						for obj in bpy.context.selected_objects:
-							if obj.type == "MESH":
+							if obj.type in VF_delivery_object_types:
 								button_title = obj.name + file_format
 					else:
 						button_title = bpy.context.active_object.name + file_format
@@ -464,8 +417,8 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 				if context.scene.vf_delivery_settings.file_type == "CSV":
 					object_count = len(bpy.context.collection.all_objects)
 				else:
-					object_count = [obj.type for obj in bpy.context.collection.all_objects].count("MESH")
-					
+					object_count = len([obj for obj in bpy.context.collection.all_objects if obj.type in VF_delivery_object_types])
+				
 				# Button icon
 				button_icon = "OUTLINER_COLLECTION"
 				
@@ -488,10 +441,7 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 			# Specific display cases
 			if context.scene.vf_delivery_settings.file_type == "CSV":
 				show_group = False
-				show_uvmap = False
 				show_csv = True
-			elif context.scene.vf_delivery_settings.file_type == "STL":
-				show_uvmap = False
 				
 			# UI Layout
 			layout = self.layout
@@ -500,9 +450,6 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 			layout.prop(context.scene.vf_delivery_settings, 'file_location', text = '')
 			layout.prop(context.scene.vf_delivery_settings, 'file_type', text = '')
 			
-			if show_uvmap:
-				layout.prop(context.scene.vf_delivery_settings, 'uvmap_experimental')
-				
 			if show_group:
 				layout.prop(context.scene.vf_delivery_settings, 'file_grouping', expand = True)
 				
@@ -520,7 +467,7 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 		except Exception as exc:
 			print(str(exc) + " | Error in VF Delivery panel")
 			
-classes = (VFDELIVERY_OT_file, vfDeliveryPreferences, vfDeliverySettings, VFTOOLS_PT_delivery)
+classes = (VFDELIVERY_OT_file, vfDeliverySettings, VFTOOLS_PT_delivery)
 
 ###########################################################################
 # Addon registration functions
