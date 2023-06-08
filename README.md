@@ -21,9 +21,11 @@ Export shortcuts for specific production pipelines. Supports Unity 3D (FBX), Thr
 	- **WARNING** — Files with the same name will be automatically overwritten
 
 - `Pipeline`
-	- `ABC - Static` exports a non-animated Alembic file from frame 0
 	- `FBX — Unity3D` implements settings ideal for use in Unity3D
 	- `GLB — ThreeJS` outputs files designed for use in ThreeJS (note that compressed GLB files are great for download optimisation, but are poorly supported in many apps)
+	- `OBJ - Element3D` formats OBJ outputs for compatibility with VideoCopilot's Element 3D
+	- `USDZ - Xcode` creates zipped USD files for use with Apple platforms such as Xcode development
+	  - Textures must be in [PNG or JPG format](https://openusd.org/release/spec_usdz.html)
 	- `STL — Printer` creates an individually named STL file for each selected object or each object within the selected collection
 	- `CSV - Position` samples every frame within the scene rendering range and saves the position values to a plain text file in comma separated value format
 - Available options are different for mesh (FBX, GLB, etcetera) and data (CSV) export types
@@ -49,13 +51,14 @@ Export shortcuts for specific production pipelines. Supports Unity 3D (FBX), Thr
 ## Known Limitations
 
 - All selected `curve`, `mesh`, `metaball`, `surface`, and `text` objects will be included by default, but not all exporters support them to the same extent:
-	- `ABC` format will export `mesh` and `metaball` objects as meshes, while `curve` objects will only include the original curve (regardless of extrusion, bevel, or geometry nodes based conversion to a mesh), and `surface` and `text` objects will only be included as empty locators
+	- `ABC` format (though not included in the latest relase) will export `mesh` and `metaball` objects as meshes, while `curve` objects will only include the original curve (regardless of extrusion, bevel, or geometry nodes based conversion to a mesh), and `surface` and `text` objects will only be included as empty locators
 	- `FBX` exports all elements as meshes, including converting non-meshed curves into point arrays using the curve sampling resolution (the line itself is lost, only the positions along that line are preserved)
 	- `GLB` will export `curve` (if extruded or beveled), `mesh`, `surface`, and `text` objects as meshes, but non-mesh `curve` objects, `curve` objects that are converted to mesh objects via geometry nodes, and `metaball` objects will be included only as empty locators
 	- `OBJ` exports all elements as meshes, except for `curve` objects without any mesh component (no extrusion, bevel, or geometry nodes conversion to a mesh) which are ignored entirely (the OBJ format doesn't support empty locators)
+	- `USDZ` files haven't been fully tested yet
 	- `STL` like the OBJ format, this exports all elements as meshes except for non-meshed curves (curve objects without any extrusion, bevel, or geometry nodes conversion to a mesh)
 	- Because there may be situations where empty locators or ignoring unsupported elements may be the preferred result, no warning will be given for "unsupported" combinations of object type and export format
-- Experimental conversion of Geometry Nodes named attributes into UV maps was a really hacky workaround for versions of Blender prior to 3.5.x, and has been removed thanks to the gradual addition of native 2D Vector and UV support in Geometry Nodes
+- Experimental conversion of Geometry Nodes named attributes into UV maps was a hacky workaround for versions of Blender prior to 3.5.x, and has been removed thanks to the gradual addition of native 2D Vector and UV support in Geometry Nodes
 	- Using the `Store Attribute` node with a `2D Vector` data type, `Face Corner` domain, and `UVMap` attribute name will successfully export a UV map (tested with FBX, GLB, and OBJ formats)
 	- As of Blender 3.5.0, using an Output Attribute with `Vector` data type, `Face Corner` domain, and setting the output field to `UVMap` in the modifier panel _does not work_ (tested with FBX, GLB, and OBJ formats)
 - There are no plans to add significant customisation to the exports. This plugin is designed for specific pipelines at Vectorform, and if it doesn't fit your use case, the best option is to fork the project and make it your own

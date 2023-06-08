@@ -1,7 +1,7 @@
 bl_info = {
 	"name": "VF Delivery",
 	"author": "John Einselen - Vectorform LLC",
-	"version": (0, 9, 0),
+	"version": (0, 10, 0),
 	"blender": (3, 3, 1),
 	"location": "Scene > VF Tools > Delivery",
 	"description": "Quickly export selected objects to a specified directory",
@@ -65,7 +65,7 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 					obj.select_set(False)
 					
 		# Begin primary export section (formats that support UV maps)
-		if format == "ABC" or format == "FBX" or format == "GLB" or format == "OBJ":
+		if format == "FBX" or format == "GLB" or format == "OBJ" or format == "USDZ":
 			# Push an undo state (easier than trying to re-select previously selected non-MESH objects?)
 			bpy.ops.ed.undo_push()
 			# Track number of undo steps to retrace after export is complete
@@ -84,36 +84,6 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 					file_name = obj.name
 					# Note to future self; you probably missed the comment block just above. Please stop freaking out. When combined is true the loop is exited after the first export pass. You can stop frantically scrolling for multi-export errors, you'll just get to the end of this section and figure out the solution is already implemented. Again.
 				
-				if format == "ABC":
-					bpy.ops.wm.alembic_export(
-						filepath = location + file_name + file_format,
-						check_existing = False, # Always overwrite existing files
-						start = 0,
-						end = 0,
-						xsamples = 1,
-						gsamples = 1,
-						selected = True,
-						visible_objects_only = False,
-						flatten = False,
-						uvs = True,
-						packuv = False, # Changed from default to prevent UV map alteration
-						normals = True,
-						vcolors = True, # Changed from default to include vertex colors
-						orcos = True,
-						face_sets = False,
-						subdiv_schema = False,
-						apply_subdiv = False,
-						curves_as_mesh = False,
-						use_instancing = True,
-						global_scale = 1.0,
-						triangulate = False,
-						quad_method = 'SHORTEST_DIAGONAL',
-						ngon_method = 'BEAUTY',
-						export_hair = True,
-						export_particles = True,
-						export_custom_properties = False, # Changed from default
-						evaluation_mode = 'RENDER')
-					
 				elif format == "FBX":
 					bpy.ops.export_scene.fbx(
 						filepath = location + file_name + file_format,
@@ -240,6 +210,25 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 						path_mode = 'AUTO',
 						axis_forward = '-Z',
 						axis_up = 'Y')
+				
+				elif format == "USDZ":
+					bpy.ops.wm.usd_export(
+						filepath = location + file_name + file_format,
+						check_existing = False, # Changed from default
+						# Removed GUI options
+						selected_objects_only = True, # Changed from default
+						visible_objects_only = True,
+						export_animation = False, # May need to add an option for enabling animation exports depending on the project
+						export_hair = False,
+						export_uvmaps = True, # Need to test this: USD uses "st" as the default uv map name, and the exporter apparently doesn't convert Blender's default "UVmap" automatically?
+						export_normals = True,
+						export_materials = True,
+						use_instancing = False,
+						evaluation_mode = 'RENDER',
+						generate_preview_surface = True,
+						export_textures = True,
+						overwrite_textures = True, # Changed from default
+						relative_paths = True)
 					
 				# Interrupt the loop if we're exporting all objects to the same file
 				if combined:
@@ -318,11 +307,13 @@ class vfDeliverySettings(bpy.types.PropertyGroup):
 		name = 'Pipeline',
 		description = 'Sets the format for delivery output',
 		items = [
-			('ABC', 'ABC — Static', 'Export Alembic binary file from frame 0'),
 			('FBX', 'FBX — Unity3D', 'Export FBX binary file for Unity'),
 			('GLB', 'GLB — ThreeJS', 'Export GLTF compressed binary file for ThreeJS'),
 			('OBJ', 'OBJ — Element3D', 'Export OBJ file for VideoCopilot Element 3D'),
+			('USDZ', 'USDZ — Xcode', 'Export USDZ file for Apple platforms including Xcode'),
+			(None),
 			('STL', 'STL — 3D Printing', 'Export individual STL file of each selected object for 3D printing'),
+			(None),
 			('CSV', 'CSV — Position', 'Export CSV file of the selected object\'s position for all frames within the render range')
 			],
 		default = 'FBX')
