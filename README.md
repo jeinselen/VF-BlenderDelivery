@@ -1,8 +1,8 @@
 # VF Delivery
 
-Export shortcuts for specific production pipelines. Supports Unity 3D (FBX), ThreeJS (compressed GLB) 3D printing (STL with multi-object output), and data visualisation (CSV position data).
+Export shortcuts for specific production pipelines. Includes presets for Unity 3D (FBX), ThreeJS (compressed GLB), Element3D (OBJ), Xcode (USDZ), 3D printing (STL with multi-object output), and data visualisation (CSV position data).
 
-![screenshot of the Blender 3D view interface with the add-on installed, showing "FBX — Unity3D" selected](images/screenshot-fbx.png)
+![screenshot of the Blender 3D view interface with the add-on installed, with the USDZ preset for Xcode selected](images/banner.jpg)
 
 ## Installation and Usage
 - Download [VF_delivery.py](https://raw.githubusercontent.com/jeinselenVF/VF-BlenderDelivery/main/VF_delivery.py)
@@ -14,25 +14,30 @@ Export shortcuts for specific production pipelines. Supports Unity 3D (FBX), Thr
 
 ## Settings
 
-![screenshot of the Blender 3D view interface with the add-on installed, showing "GLB — ThreeJS" selected](images/screenshot-glb.png)
+![screenshot of the Blender 3D view interface with the add-on installed, showing "FBX — Unity3D" selected](images/screenshot-fbx.png)
 
 - `Delivery Location`
 	- Folder where all exported files will be saved
-	- **WARNING** — Files with the same name will be automatically overwritten
+	- **WARNING** — Files with the same name will be automatically overwritten without notification
 
 - `Pipeline`
 	- `FBX — Unity3D` implements settings ideal for use in Unity3D
 	- `GLB — ThreeJS` outputs files designed for use in ThreeJS (note that compressed GLB files are great for download optimisation, but are poorly supported in many apps)
 	- `OBJ - Element3D` formats OBJ outputs for compatibility with VideoCopilot's Element 3D
 	- `USDZ - Xcode` creates zipped USD files for use with Apple platforms such as Xcode development
-	  - Textures must be in [PNG or JPG format](https://openusd.org/release/spec_usdz.html)
+		- Textures must be in [PNG or JPG format](https://openusd.org/release/spec_usdz.html)
 	- `STL — Printer` creates an individually named STL file for each selected object or each object within the selected collection
 	- `CSV - Position` samples every frame within the scene rendering range and saves the position values to a plain text file in comma separated value format
-- Available options are different for mesh (FBX, GLB, etcetera) and data (CSV) export types
+
+![screenshot of the Blender 3D view interface with the add-on installed, showing "GLB — ThreeJS" selected](images/screenshot-glb.png)
+
+Available options are different for mesh and data export types
+
+- Mesh export options (`FBX`, `GLB`, `OBJ`, `USDZ`, and `STL`)
 	- `Grouping` determines how multiple selections are handled for all mesh export types (not applicable to CSV data)
 		- `Combined` exports all selected mesh objects into a single file with the output name determined by the active object (active object doesn't have to be a mesh, and will not be included in the export)
 		- `	Individual` exports each selected mesh object as an individually named file
-
+- Data export options (`CSV` only)
 	- `Position` defines the world or local space of the exported data (exclusive to CSV data)
 		- `World` exports each frame of position data in world space (parent position and animation will be fully accounted for)
 		- `Local` exports each frame of position data in local object space (parent position and animation is irrelelvant)
@@ -53,9 +58,9 @@ Export shortcuts for specific production pipelines. Supports Unity 3D (FBX), Thr
 - All selected `curve`, `mesh`, `metaball`, `surface`, and `text` objects will be included by default, but not all exporters support them to the same extent:
 	- `ABC` format (though not included in the latest relase) will export `mesh` and `metaball` objects as meshes, while `curve` objects will only include the original curve (regardless of extrusion, bevel, or geometry nodes based conversion to a mesh), and `surface` and `text` objects will only be included as empty locators
 	- `FBX` exports all elements as meshes, including converting non-meshed curves into point arrays using the curve sampling resolution (the line itself is lost, only the positions along that line are preserved)
-	- `GLB` will export `curve` (if extruded or beveled), `mesh`, `surface`, and `text` objects as meshes, but non-mesh `curve` objects, `curve` objects that are converted to mesh objects via geometry nodes, and `metaball` objects will be included only as empty locators
+	- `GLB` will export `curve` (if extruded, beveled, or converted to a mesh in Geometry Nodes as of Blender 3.5), `mesh`, `surface`, and `text` objects as meshes, but non-mesh `curve` objects and `metaball` objects will be included only as empty locators
 	- `OBJ` exports all elements as meshes, except for `curve` objects without any mesh component (no extrusion, bevel, or geometry nodes conversion to a mesh) which are ignored entirely (the OBJ format doesn't support empty locators)
-	- `USDZ` files haven't been fully tested yet
+	- `USDZ` files only include basic mesh and metaball objects, all other object types, even mesh objects with geometry nodes, are replaced with empty locators
 	- `STL` like the OBJ format, this exports all elements as meshes except for non-meshed curves (curve objects without any extrusion, bevel, or geometry nodes conversion to a mesh)
 	- Because there may be situations where empty locators or ignoring unsupported elements may be the preferred result, no warning will be given for "unsupported" combinations of object type and export format
 - Experimental conversion of Geometry Nodes named attributes into UV maps was a hacky workaround for versions of Blender prior to 3.5.x, and has been removed thanks to the gradual addition of native 2D Vector and UV support in Geometry Nodes
