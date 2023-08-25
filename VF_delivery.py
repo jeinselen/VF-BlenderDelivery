@@ -6,8 +6,8 @@ bl_info = {
 	"location": "Scene > VF Tools > Delivery",
 	"description": "Quickly export selected objects to a specified directory",
 	"warning": "inexperienced developer, use at your own risk",
-	"wiki_url": "",
-	"tracker_url": "",
+	"doc_url": "https://github.com/jeinselenVF/VF-BlenderDelivery",
+	"tracker_url": "https://github.com/jeinselenVF/VF-BlenderDelivery/issues",
 	"category": "3D View"}
 
 import bpy
@@ -238,7 +238,7 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 			for i in range(undo_steps):
 				bpy.ops.ed.undo()
 				
-		# End primary exprt section (formats that support UV maps)
+		# End primary export section (formats that support UV maps)
 		# Begin secondary export section (formats that do not support UV maps)
 		
 		elif format == "STL":
