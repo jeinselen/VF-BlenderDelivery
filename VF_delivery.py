@@ -1,7 +1,7 @@
 bl_info = {
 	"name": "VF Delivery",
 	"author": "John Einselen - Vectorform LLC",
-	"version": (0, 10, 0),
+	"version": (0, 11, 0),
 	"blender": (3, 3, 1),
 	"location": "Scene > VF Tools > Delivery",
 	"description": "Quickly export selected objects to a specified directory",
@@ -13,6 +13,7 @@ bl_info = {
 import bpy
 from bpy.app.handlers import persistent
 import mathutils
+import struct
 import numpy as np
 
 # With help from:
@@ -258,7 +259,96 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 				axis_forward = 'Y',
 				axis_up = 'Z',
 				filter_glob = '*.stl')
+		
+		elif format == "VF":
+			# Define the data to be saved
+			fourcc = "VF_V"  # Replace with the appropriate FourCC of either 'VF_F' for value or 'VF_V' for vec3
 			
+			# Name of the custom attribute
+			attribute_name = 'field_vector'
+			
+			# Select the object
+			obj = bpy.context.object
+			
+			# Ensure the selected object is a mesh
+			if obj and obj.type == 'MESH':
+				# Apply modifiers (this should populate the attribute)
+				undo_steps = 0
+				for mod in obj.modifiers:
+					bpy.ops.ed.undo_push()
+					undo_steps += 1
+					
+					name = mod.name
+					bpy.ops.object.modifier_apply(modifier = name)
+				
+				# Ensure attribute exists
+				if attribute_name in obj.data.attributes:
+					# Create empty array
+					array = []
+					
+					# For each attribute entry, collect the results
+					for data in obj.data.attributes[attribute_name].data:
+						# Check if the attribute includes a value
+						if hasattr(data, 'value'):
+							#print(f"{attribute_name}={data.value}")
+							array.append(data.value)
+						# Check if the attribute includes a vector
+						elif hasattr(data, 'vector'):
+							#print(f"{attribute_name}={data.vector}")
+							# Swizzle XZY order for Blender to Unity coordinate conversion
+							array.append((data.vector.x, data.vector.z, data.vector.y))
+						else:
+							print(f"Values not found in '{attribute_name}' attribute.")
+							
+							# Undo the previously completed object modifications
+							for i in range(undo_steps):
+								bpy.ops.ed.undo()
+							return {'CANCELLED'}
+					
+					# Set array size using custom properties
+					size_x = obj.data["vf_point_grid_x"]
+					size_y = obj.data["vf_point_grid_z"] # Swizzle XZY order for Unity coordinate system
+					size_z = obj.data["vf_point_grid_y"] # Swizzle XZY order for Unity coordinate system
+					
+					# Calculate the stride based on the data type
+					is_float_data = fourcc[3] == 'F'
+					stride = 1 if is_float_data else 3
+					
+					# Create a new binary file for writing
+					with open(location + obj.name + file_format, 'wb') as file:
+						# Write the FourCC
+						file.write(struct.pack('4s', fourcc.encode('utf-8')))
+						
+						# Write the volume size
+						file.write(struct.pack('HHH', size_x, size_y, size_z))
+						
+						# Write the data
+						for value in array:
+							#print('value: ' + str(value))
+							if is_float_data:
+								file.write(struct.pack('f', value))
+							else:
+								# Pack all three components together as a vector
+								file.write(struct.pack('fff', *value))
+				else:
+					print(f"Selected object does not contain '{attribute_name}' values.")
+					
+					# Undo apply modifiers and cancel processing
+					# Undo the previously completed object modifications
+					for i in range(undo_steps):
+						bpy.ops.ed.undo()
+					return {'CANCELLED'}
+				
+				# Undo the previously completed object modifications
+				for i in range(undo_steps):
+					bpy.ops.ed.undo()
+				
+			else:
+				print(f"Selected object is not a mesh")
+				
+				# Cancel processing
+				return {'CANCELLED'}
+		
 		elif format == "CSV":
 			# Save timeline position
 			frame_current = bpy.context.scene.frame_current
@@ -313,6 +403,8 @@ class vfDeliverySettings(bpy.types.PropertyGroup):
 			('USDZ', 'USDZ — Xcode', 'Export USDZ file for Apple platforms including Xcode'),
 			(None),
 			('STL', 'STL — 3D Printing', 'Export individual STL file of each selected object for 3D printing'),
+			(None),
+			('VF', 'VF — Unity3D Volume Field', 'Export volume field for Unity'),
 			(None),
 			('CSV', 'CSV — Position', 'Export CSV file of the selected object\'s position for all frames within the render range')
 			],
