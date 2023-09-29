@@ -1,7 +1,7 @@
 bl_info = {
 	"name": "VF Delivery",
 	"author": "John Einselen - Vectorform LLC",
-	"version": (0, 11, 2),
+	"version": (0, 11, 3),
 	"blender": (3, 3, 1),
 	"location": "Scene > VF Tools > Delivery",
 	"description": "Quickly export selected objects to a specified directory",
@@ -15,6 +15,7 @@ from bpy.app.handlers import persistent
 import mathutils
 import struct
 import numpy as np
+import os
 
 # With help from:
 # https://stackoverflow.com/questions/54464682/best-way-to-undo-previous-steps-in-a-series-of-steps
@@ -37,11 +38,15 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 	
 	def execute(self, context):
 		# Set up local variables
-		location = bpy.context.scene.vf_delivery_settings.file_location
+		location = bpy.path.abspath(bpy.context.scene.vf_delivery_settings.file_location)
 		format = bpy.context.scene.vf_delivery_settings.file_type
 		combined = True if bpy.context.scene.vf_delivery_settings.file_grouping == "COMBINED" else False
 		file_format = "." + format.lower()
 		active_object = bpy.context.active_object
+		
+		# Create directory if it doesn't exist yet
+		if not os.path.exists(location):
+			os.makedirs(location)
 		
 		# Save then override the current mode to OBJECT
 		if active_object is not None:
@@ -273,13 +278,13 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 			# Ensure the selected object is a mesh with equal to or fewer than 65536 vertices and the necessary properties and attributes
 			if obj and obj.type == 'MESH' and len(obj.data.vertices) <= 65536 and obj.data.get('vf_point_grid_x') is not None and obj.data.get('vf_point_grid_y') is not None and obj.data.get('vf_point_grid_z') is not None:
 				# Apply modifiers (this should populate the attribute)
-				undo_steps = 0
+				bpy.ops.ed.undo_push()
 				for mod in obj.modifiers:
-					bpy.ops.ed.undo_push()
-					undo_steps += 1
-					
 					name = mod.name
 					bpy.ops.object.modifier_apply(modifier = name)
+				# I don't know why pushing an undo state twice is necessary, but it's the only thing that prevented loss of modifiers
+				# ...a single undo never seemed to actually undo anything
+				bpy.ops.ed.undo_push()
 				
 				# Check if named attribute exists
 				if attribute_name in obj.data.attributes:
@@ -299,8 +304,8 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 							print(f"Values not found in '{attribute_name}' attribute.")
 							
 							# Undo the previously completed object modifications
-							for i in range(undo_steps):
-								bpy.ops.ed.undo()
+							bpy.ops.ed.undo()
+							bpy.ops.ed.undo()
 							return {'CANCELLED'}
 					
 					# Set array size using custom properties
@@ -330,14 +335,15 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 					print(f"Selected object does not contain '{attribute_name}' values.")
 					
 					# Undo apply modifiers and cancel processing
-					# Undo the previously completed object modifications
-					for i in range(undo_steps):
-						bpy.ops.ed.undo()
+					bpy.ops.ed.undo()
+					bpy.ops.ed.undo()
 					return {'CANCELLED'}
 				
 				# Undo the previously completed object modifications
-				for i in range(undo_steps):
-					bpy.ops.ed.undo()
+				# I don't know why pushing an undo state twice is necessary, but it's the only thing that prevented loss of modifiers
+				# ...a single undo never seemed to actually undo anything
+				bpy.ops.ed.undo()
+				bpy.ops.ed.undo()
 				
 			else:
 				print(f"Selected object is not a mesh")
@@ -408,7 +414,7 @@ class vfDeliverySettings(bpy.types.PropertyGroup):
 	file_location: bpy.props.StringProperty(
 		name = "Delivery Location",
 		description = "Delivery location for all exported files",
-		default = "/",
+		default = "//",
 		maxlen = 4096,
 		subtype = "DIR_PATH")
 	file_grouping: bpy.props.EnumProperty(
@@ -462,7 +468,7 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 			button_enable = True
 			button_icon = "FILE"
 			button_title = ''
-			warning_info = ''
+			info_box = ''
 			show_group = True
 			show_csv = False
 			object_count = 0
@@ -473,10 +479,12 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 				# Does not check for named attributes, however, since that requires applying all modifiers
 				if context.scene.vf_delivery_settings.file_type == "VF":
 					obj = bpy.context.object
-					if obj.type == 'MESH' and len(obj.data.vertices) <= 65536 and obj.data.get('vf_point_grid_x') is not None and obj.data.get('vf_point_grid_y') is not None and obj.data.get('vf_point_grid_z') is not None:
+					# Validate object data (doesn't check if the geometry nodes modifier actually includes a named attribute)
+					if obj.type == 'MESH' and len(obj.data.vertices) <= 65536 and obj.data.get('vf_point_grid_x') is not None and obj.data.get('vf_point_grid_y') is not None and obj.data.get('vf_point_grid_z') is not None and ('field_vector' in obj.data.attributes or 'NODES' in [modifier.type for modifier in obj.modifiers]):
 						object_count = 1
+#						info_box = 'Volume export requires,"field_vector" attribute in,Geometry Node modifier'
 					else:
-						warning_info = 'Volume export requires:,mesh with <=65536 points,"vf_point_grid..." properties,"field_vector" attribute'
+						info_box = 'Volume export requires:,mesh with <=65536 points,"vf_point_grid..." properties,"field_vector" attribute'
 				# CSV: count any items
 				elif context.scene.vf_delivery_settings.file_type == "CSV":
 					object_count = len(bpy.context.selected_objects)
@@ -559,10 +567,10 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 				disabled.enabled = False
 				disabled.operator(VFDELIVERY_OT_file.bl_idname, text = button_title, icon = button_icon)
 			
-			if warning_info:
+			if info_box:
 				box = layout.box()
 				col = box.column(align=True)
-				for line in warning_info.split(','):
+				for line in info_box.split(','):
 					col.label(text=line)
 			
 		except Exception as exc:
