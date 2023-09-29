@@ -1,7 +1,7 @@
 bl_info = {
 	"name": "VF Delivery",
 	"author": "John Einselen - Vectorform LLC",
-	"version": (0, 11, 1),
+	"version": (0, 11, 2),
 	"blender": (3, 3, 1),
 	"location": "Scene > VF Tools > Delivery",
 	"description": "Quickly export selected objects to a specified directory",
@@ -271,7 +271,7 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 			obj = bpy.context.object
 			
 			# Ensure the selected object is a mesh with equal to or fewer than 65536 vertices and the necessary properties and attributes
-			if obj and obj.type == 'MESH' and len(obj.data.vertices) <= 65536 and obj.data.get('vf_point_grid_x') and obj.data.get('vf_point_grid_y') and obj.data.get('vf_point_grid_z') and attribute_name in obj.data.attributes:
+			if obj and obj.type == 'MESH' and len(obj.data.vertices) <= 65536 and obj.data.get('vf_point_grid_x') is not None and obj.data.get('vf_point_grid_y') is not None and obj.data.get('vf_point_grid_z') is not None:
 				# Apply modifiers (this should populate the attribute)
 				undo_steps = 0
 				for mod in obj.modifiers:
@@ -281,7 +281,7 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 					name = mod.name
 					bpy.ops.object.modifier_apply(modifier = name)
 				
-				# Ensure attribute exists
+				# Check if named attribute exists
 				if attribute_name in obj.data.attributes:
 					# Create empty array
 					array = []
@@ -393,14 +393,14 @@ class vfDeliverySettings(bpy.types.PropertyGroup):
 		name = 'Pipeline',
 		description = 'Sets the format for delivery output',
 		items = [
-			('FBX', 'FBX — Unity3D', 'Export FBX binary file for Unity'),
+			('FBX', 'FBX — Unity 3D', 'Export FBX binary file for Unity 3D'),
 			('GLB', 'GLB — ThreeJS', 'Export GLTF compressed binary file for ThreeJS'),
 			('OBJ', 'OBJ — Element3D', 'Export OBJ file for VideoCopilot Element 3D'),
 			('USDZ', 'USDZ — Xcode', 'Export USDZ file for Apple platforms including Xcode'),
 			(None),
 			('STL', 'STL — 3D Printing', 'Export individual STL file of each selected object for 3D printing'),
 			(None),
-			('VF', 'VF — Unity3D Volume Field', 'Export volume field for Unity'),
+			('VF', 'VF — Unity 3D Volume Field', 'Export volume field for Unity 3D'),
 			(None),
 			('CSV', 'CSV — Position', 'Export CSV file of the selected object\'s position for all frames within the render range')
 			],
@@ -470,15 +470,15 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 			# Check if at least one object is selected
 			if bpy.context.object and bpy.context.object.select_get():
 				# Volume Field: count only an active mesh with the necessary data elements
+				# Does not check for named attributes, however, since that requires applying all modifiers
 				if context.scene.vf_delivery_settings.file_type == "VF":
-					attribute_name = 'field_vector'
 					obj = bpy.context.object
-					if obj.type == 'MESH' and len(obj.data.vertices) <= 65536 and obj.data.get('vf_point_grid_x') and obj.data.get('vf_point_grid_y') and obj.data.get('vf_point_grid_z') and attribute_name in obj.data.attributes:
+					if obj.type == 'MESH' and len(obj.data.vertices) <= 65536 and obj.data.get('vf_point_grid_x') is not None and obj.data.get('vf_point_grid_y') is not None and obj.data.get('vf_point_grid_z') is not None:
 						object_count = 1
 					else:
 						warning_info = 'Volume export requires:,mesh with <=65536 points,"vf_point_grid..." properties,"field_vector" attribute'
 				# CSV: count any items
-				if context.scene.vf_delivery_settings.file_type == "CSV":
+				elif context.scene.vf_delivery_settings.file_type == "CSV":
 					object_count = len(bpy.context.selected_objects)
 				# Geometry: count only supported meshes and curves that are not hidden
 				else:
@@ -496,7 +496,7 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 						button_title = bpy.context.active_object.name + file_format
 				else:
 					button_title = str(object_count) + " files"
-					
+				
 				# Button icon
 				button_icon = "OUTLINER_OB_MESH"
 			
@@ -507,7 +507,7 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 				if context.scene.vf_delivery_settings.file_type == "CSV":
 					object_count = len(bpy.context.collection.all_objects)
 				# Geometry: count only supported data types (mesh, curve, etcetera) for everything else
-				else:
+				elif not context.scene.vf_delivery_settings.file_type == "VF":
 					object_count = len([obj for obj in bpy.context.collection.all_objects if obj.type in VF_delivery_object_types])
 				
 				# Button title
@@ -515,10 +515,10 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 					button_title = bpy.context.collection.name + file_format
 				else:
 					button_title = str(object_count) + " files"
-					
+				
 				# Button icon
 				button_icon = "OUTLINER_COLLECTION"
-					
+			
 			# If no usable items (CSV) or meshes (everything else) is found, disable the button
 			# Keeping the message generic allows this to be used universally
 			if object_count == 0:
@@ -528,7 +528,7 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 					button_title = "Select object"
 				else:
 					button_title = "Select mesh"
-					
+			
 			# Specific display cases
 			if context.scene.vf_delivery_settings.file_type == "CSV":
 				show_group = False
@@ -537,7 +537,7 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 			if context.scene.vf_delivery_settings.file_type == "VF":
 				show_group = False
 				show_csv = False
-				
+			
 			# UI Layout
 			layout = self.layout
 			layout.use_property_decorate = False # No animation
@@ -547,10 +547,10 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 			
 			if show_group:
 				layout.prop(context.scene.vf_delivery_settings, 'file_grouping', expand = True)
-				
+			
 			if show_csv:
 				layout.prop(context.scene.vf_delivery_settings, 'csv_position', expand = True)
-				
+			
 			if button_enable:
 				layout.operator(VFDELIVERY_OT_file.bl_idname, text = button_title, icon = button_icon)
 			else:
@@ -564,10 +564,10 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 				col = box.column(align=True)
 				for line in warning_info.split(','):
 					col.label(text=line)
-				
+			
 		except Exception as exc:
 			print(str(exc) + " | Error in VF Delivery panel")
-			
+
 classes = (VFDELIVERY_OT_file, vfDeliverySettings, VFTOOLS_PT_delivery)
 
 ###########################################################################
