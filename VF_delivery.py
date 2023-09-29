@@ -1,7 +1,7 @@
 bl_info = {
 	"name": "VF Delivery",
 	"author": "John Einselen - Vectorform LLC",
-	"version": (0, 11, 0),
+	"version": (0, 11, 1),
 	"blender": (3, 3, 1),
 	"location": "Scene > VF Tools > Delivery",
 	"description": "Quickly export selected objects to a specified directory",
@@ -48,7 +48,7 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 			object_mode = active_object.mode
 			bpy.ops.object.mode_set(mode = 'OBJECT')
 				
-		# Check if an object is selected, if not, convert selected collection into object selection
+		# Check if at least one object is selected, if not, convert selected collection into object selection
 		if bpy.context.object and bpy.context.object.select_get():
 			file_name = active_object.name
 		else:
@@ -267,11 +267,11 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 			# Name of the custom attribute
 			attribute_name = 'field_vector'
 			
-			# Select the object
+			# Get the active selected object
 			obj = bpy.context.object
 			
-			# Ensure the selected object is a mesh
-			if obj and obj.type == 'MESH':
+			# Ensure the selected object is a mesh with equal to or fewer than 65536 vertices and the necessary properties and attributes
+			if obj and obj.type == 'MESH' and len(obj.data.vertices) <= 65536 and obj.data.get('vf_point_grid_x') and obj.data.get('vf_point_grid_y') and obj.data.get('vf_point_grid_z') and attribute_name in obj.data.attributes:
 				# Apply modifiers (this should populate the attribute)
 				undo_steps = 0
 				for mod in obj.modifiers:
@@ -290,11 +290,9 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 					for data in obj.data.attributes[attribute_name].data:
 						# Check if the attribute includes a value
 						if hasattr(data, 'value'):
-							#print(f"{attribute_name}={data.value}")
 							array.append(data.value)
 						# Check if the attribute includes a vector
 						elif hasattr(data, 'vector'):
-							#print(f"{attribute_name}={data.vector}")
 							# Swizzle XZY order for Blender to Unity coordinate conversion
 							array.append((data.vector.x, data.vector.z, data.vector.y))
 						else:
@@ -324,11 +322,9 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 						
 						# Write the data
 						for value in array:
-							#print('value: ' + str(value))
 							if is_float_data:
 								file.write(struct.pack('f', value))
 							else:
-								# Pack all three components together as a vector
 								file.write(struct.pack('fff', *value))
 				else:
 					print(f"Selected object does not contain '{attribute_name}' values.")
@@ -466,20 +462,27 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 			button_enable = True
 			button_icon = "FILE"
 			button_title = ''
+			warning_info = ''
 			show_group = True
 			show_csv = False
 			object_count = 0
 			
-			# Update variables based on object selection status
+			# Check if at least one object is selected
 			if bpy.context.object and bpy.context.object.select_get():
-				# Count any items for CSV, count only meshes for everything else
+				# Volume Field: count only an active mesh with the necessary data elements
+				if context.scene.vf_delivery_settings.file_type == "VF":
+					attribute_name = 'field_vector'
+					obj = bpy.context.object
+					if obj.type == 'MESH' and len(obj.data.vertices) <= 65536 and obj.data.get('vf_point_grid_x') and obj.data.get('vf_point_grid_y') and obj.data.get('vf_point_grid_z') and attribute_name in obj.data.attributes:
+						object_count = 1
+					else:
+						warning_info = 'Volume export requires:,mesh with <=65536 points,"vf_point_grid..." properties,"field_vector" attribute'
+				# CSV: count any items
 				if context.scene.vf_delivery_settings.file_type == "CSV":
 					object_count = len(bpy.context.selected_objects)
+				# Geometry: count only supported meshes and curves that are not hidden
 				else:
 					object_count = len([obj for obj in bpy.context.selected_objects if obj.type in VF_delivery_object_types])
-				
-				# Button icon
-				button_icon = "OUTLINER_OB_MESH"
 				
 				# Button title
 				if (object_count > 1 and context.scene.vf_delivery_settings.file_grouping == "COMBINED" and not context.scene.vf_delivery_settings.file_type == "CSV"):
@@ -494,22 +497,27 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 				else:
 					button_title = str(object_count) + " files"
 					
-			# Update variables based on active collection if no object is selected
-			else:
-				# Count any items within the collection for CSV, count only meshes for everything else
+				# Button icon
+				button_icon = "OUTLINER_OB_MESH"
+			
+			# Active collection fallback (except for Volume Field)
+			elif not context.scene.vf_delivery_settings.file_type == "VF":
+				# Volume Field: requires an active mesh object, collections are not supported
+				# CSV: count any items within the collection
 				if context.scene.vf_delivery_settings.file_type == "CSV":
 					object_count = len(bpy.context.collection.all_objects)
+				# Geometry: count only supported data types (mesh, curve, etcetera) for everything else
 				else:
 					object_count = len([obj for obj in bpy.context.collection.all_objects if obj.type in VF_delivery_object_types])
-				
-				# Button icon
-				button_icon = "OUTLINER_COLLECTION"
 				
 				# Button title
 				if context.scene.vf_delivery_settings.file_grouping == "COMBINED" and not context.scene.vf_delivery_settings.file_type == "CSV":
 					button_title = bpy.context.collection.name + file_format
 				else:
 					button_title = str(object_count) + " files"
+					
+				# Button icon
+				button_icon = "OUTLINER_COLLECTION"
 					
 			# If no usable items (CSV) or meshes (everything else) is found, disable the button
 			# Keeping the message generic allows this to be used universally
@@ -525,6 +533,10 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 			if context.scene.vf_delivery_settings.file_type == "CSV":
 				show_group = False
 				show_csv = True
+			
+			if context.scene.vf_delivery_settings.file_type == "VF":
+				show_group = False
+				show_csv = False
 				
 			# UI Layout
 			layout = self.layout
@@ -546,6 +558,12 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 				disabled.active = False
 				disabled.enabled = False
 				disabled.operator(VFDELIVERY_OT_file.bl_idname, text = button_title, icon = button_icon)
+			
+			if warning_info:
+				box = layout.box()
+				col = box.column(align=True)
+				for line in warning_info.split(','):
+					col.label(text=line)
 				
 		except Exception as exc:
 			print(str(exc) + " | Error in VF Delivery panel")
