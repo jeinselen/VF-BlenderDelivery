@@ -1,7 +1,7 @@
 bl_info = {
 	"name": "VF Delivery",
 	"author": "John Einselen - Vectorform LLC",
-	"version": (0, 11, 3),
+	"version": (0, 11, 4),
 	"blender": (3, 3, 1),
 	"location": "Scene > VF Tools > Delivery",
 	"description": "Quickly export selected objects to a specified directory",
@@ -277,14 +277,8 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 			
 			# Ensure the selected object is a mesh with equal to or fewer than 65536 vertices and the necessary properties and attributes
 			if obj and obj.type == 'MESH' and len(obj.data.vertices) <= 65536 and obj.data.get('vf_point_grid_x') is not None and obj.data.get('vf_point_grid_y') is not None and obj.data.get('vf_point_grid_z') is not None:
-				# Apply modifiers (this should populate the attribute)
-				bpy.ops.ed.undo_push()
-				for mod in obj.modifiers:
-					name = mod.name
-					bpy.ops.object.modifier_apply(modifier = name)
-				# I don't know why pushing an undo state twice is necessary, but it's the only thing that prevented loss of modifiers
-				# ...a single undo never seemed to actually undo anything
-				bpy.ops.ed.undo_push()
+				# Get evaluated object
+				obj = bpy.context.evaluated_depsgraph_get().objects.get(obj.name)
 				
 				# Check if named attribute exists
 				if attribute_name in obj.data.attributes:
@@ -302,10 +296,6 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 							array.append((data.vector.x, data.vector.z, data.vector.y))
 						else:
 							print(f"Values not found in '{attribute_name}' attribute.")
-							
-							# Undo the previously completed object modifications
-							bpy.ops.ed.undo()
-							bpy.ops.ed.undo()
 							return {'CANCELLED'}
 					
 					# Set array size using custom properties
@@ -333,17 +323,7 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 								file.write(struct.pack('fff', *value))
 				else:
 					print(f"Selected object does not contain '{attribute_name}' values.")
-					
-					# Undo apply modifiers and cancel processing
-					bpy.ops.ed.undo()
-					bpy.ops.ed.undo()
 					return {'CANCELLED'}
-				
-				# Undo the previously completed object modifications
-				# I don't know why pushing an undo state twice is necessary, but it's the only thing that prevented loss of modifiers
-				# ...a single undo never seemed to actually undo anything
-				bpy.ops.ed.undo()
-				bpy.ops.ed.undo()
 				
 			else:
 				print(f"Selected object is not a mesh")
