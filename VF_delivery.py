@@ -1,7 +1,7 @@
 bl_info = {
 	"name": "VF Delivery",
 	"author": "John Einselen - Vectorform LLC",
-	"version": (0, 11, 4),
+	"version": (0, 12, 0),
 	"blender": (3, 3, 1),
 	"location": "Scene > VF Tools > Delivery",
 	"description": "Quickly export selected objects to a specified directory",
@@ -22,6 +22,7 @@ import os
 # https://stackoverflow.com/questions/37335653/unable-to-completely-deselect-all-objects-in-blender-using-scripting-or-key-a
 # https://blender.stackexchange.com/questions/200341/apply-modifiers-in-all-objects-at-once
 # https://github.com/CheeryLee/blender_apply_modifiers/blob/master/apply_modifiers.py
+# https://blender.stackexchange.com/a/146573/123159
 
 # Define allowed object types
 VF_delivery_object_types = ['CURVE', 'MESH', 'META', 'SURFACE', 'FONT']
@@ -40,8 +41,8 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 		# Set up local variables
 		location = bpy.path.abspath(bpy.context.scene.vf_delivery_settings.file_location)
 		format = bpy.context.scene.vf_delivery_settings.file_type
+		file_format = "." + format.lower().split("-")[0] # Get only the characters before a dash to support multiple variations of a single format
 		combined = True if bpy.context.scene.vf_delivery_settings.file_grouping == "COMBINED" else False
-		file_format = "." + format.lower()
 		active_object = bpy.context.active_object
 		
 		# Create directory if it doesn't exist yet
@@ -61,7 +62,7 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 			for obj in bpy.context.collection.all_objects:
 				obj.select_set(True)
 				
-		if format != "CSV":
+		if format != "CSV-1":
 			# Push an undo state (seems easier than trying to re-select previously selected non-mesh objects)
 			bpy.ops.ed.undo_push()
 			
@@ -331,7 +332,7 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 				# Cancel processing
 				return {'CANCELLED'}
 		
-		elif format == "CSV":
+		elif format == "CSV-1":
 			# Save timeline position
 			frame_current = bpy.context.scene.frame_current
 			
@@ -359,8 +360,30 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 					
 			# Reset timeline position
 			bpy.context.scene.frame_set(frame_current)
-			
-		if format != "CSV":
+		
+		elif format == "CSV-2":
+			for obj in bpy.context.selected_objects:
+				# Get evaluated object
+				obj = bpy.context.evaluated_depsgraph_get().objects.get(obj.name)
+				
+				# Collect data with temporary mesh conversion
+				array = [["x","y","z"]]
+				for v in obj.to_mesh().vertices:
+					array.append([v.co.x, v.co.y, v.co.z])
+				
+				# Remove temporary mesh conversion
+				obj.to_mesh_clear()
+				
+				# Save out CSV file
+				np.savetxt(
+					location + obj.name + file_format,
+					array,
+					delimiter = ",",
+					newline = '\n',
+					fmt = '% s'
+					)
+		
+		if format != "CSV-1":
 			# Undo the previously completed non-mesh object deselection
 			bpy.ops.ed.undo()
 			
@@ -388,7 +411,8 @@ class vfDeliverySettings(bpy.types.PropertyGroup):
 			(None),
 			('VF', 'VF — Unity 3D Volume Field', 'Export volume field for Unity 3D'),
 			(None),
-			('CSV', 'CSV — Position', 'Export CSV file of the selected object\'s position for all frames within the render range')
+			('CSV-1', 'CSV — Item Position', 'Export CSV file of the selected object\'s position for all frames within the render range'),
+			('CSV-2', 'CSV — Point Position', 'Export CSV file of the selected object\'s points in object space')
 			],
 		default = 'FBX')
 	file_location: bpy.props.StringProperty(
@@ -444,7 +468,7 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 	def draw(self, context):
 		try:
 			# Set up variables
-			file_format = "." + context.scene.vf_delivery_settings.file_type.lower()
+			file_format = "." + context.scene.vf_delivery_settings.file_type.lower().split("-")[0] # Get only the characters before a dash to support multiple variations of a single format
 			button_enable = True
 			button_icon = "FILE"
 			button_title = ''
@@ -466,14 +490,14 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 					else:
 						info_box = 'Volume export requires:,mesh with <=65536 points,"vf_point_grid..." properties,"field_vector" attribute'
 				# CSV: count any items
-				elif context.scene.vf_delivery_settings.file_type == "CSV":
+				elif context.scene.vf_delivery_settings.file_type == "CSV-1":
 					object_count = len(bpy.context.selected_objects)
 				# Geometry: count only supported meshes and curves that are not hidden
 				else:
 					object_count = len([obj for obj in bpy.context.selected_objects if obj.type in VF_delivery_object_types])
 				
 				# Button title
-				if (object_count > 1 and context.scene.vf_delivery_settings.file_grouping == "COMBINED" and not context.scene.vf_delivery_settings.file_type == "CSV"):
+				if (object_count > 1 and context.scene.vf_delivery_settings.file_grouping == "COMBINED" and not (context.scene.vf_delivery_settings.file_type == "CSV-1" or context.scene.vf_delivery_settings.file_type == "CSV-2")):
 					button_title = bpy.context.active_object.name + file_format
 				elif object_count == 1:
 					if bpy.context.active_object.type not in VF_delivery_object_types and context.scene.vf_delivery_settings.file_grouping == "INDIVIDUAL":
@@ -491,15 +515,15 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 			# Active collection fallback (except for Volume Field)
 			elif not context.scene.vf_delivery_settings.file_type == "VF":
 				# Volume Field: requires an active mesh object, collections are not supported
-				# CSV: count any items within the collection
-				if context.scene.vf_delivery_settings.file_type == "CSV":
+				# CSV-1: count any items within the collection
+				if context.scene.vf_delivery_settings.file_type == "CSV-1":
 					object_count = len(bpy.context.collection.all_objects)
 				# Geometry: count only supported data types (mesh, curve, etcetera) for everything else
 				elif not context.scene.vf_delivery_settings.file_type == "VF":
 					object_count = len([obj for obj in bpy.context.collection.all_objects if obj.type in VF_delivery_object_types])
 				
 				# Button title
-				if context.scene.vf_delivery_settings.file_grouping == "COMBINED" and not context.scene.vf_delivery_settings.file_type == "CSV":
+				if context.scene.vf_delivery_settings.file_grouping == "COMBINED" and not (context.scene.vf_delivery_settings.file_type == "CSV-1" or context.scene.vf_delivery_settings.file_type == "CSV-2"):
 					button_title = bpy.context.collection.name + file_format
 				else:
 					button_title = str(object_count) + " files"
@@ -507,22 +531,26 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 				# Button icon
 				button_icon = "OUTLINER_COLLECTION"
 			
-			# If no usable items (CSV) or meshes (everything else) is found, disable the button
+			# If no usable items (CSV-1) or meshes (everything else) are found, disable the button
 			# Keeping the message generic allows this to be used universally
 			if object_count == 0:
 				button_enable = False
 				button_icon = "X"
-				if context.scene.vf_delivery_settings.file_type == "CSV":
-					button_title = "Select object"
+				if context.scene.vf_delivery_settings.file_type == "CSV-1":
+					button_title = "Select item"
 				else:
 					button_title = "Select mesh"
 			
 			# Specific display cases
-			if context.scene.vf_delivery_settings.file_type == "CSV":
+			if context.scene.vf_delivery_settings.file_type == "VF":
+				show_group = False
+				show_csv = False
+			
+			if context.scene.vf_delivery_settings.file_type == "CSV-1":
 				show_group = False
 				show_csv = True
 			
-			if context.scene.vf_delivery_settings.file_type == "VF":
+			if context.scene.vf_delivery_settings.file_type == "CSV-2":
 				show_group = False
 				show_csv = False
 			
