@@ -5,7 +5,7 @@ Export shortcuts for specific production pipelines. Includes presets for Unity 3
 ![screenshot of the Blender 3D view interface with the add-on installed, with the USDZ preset for Xcode selected](images/banner.jpg)
 
 ## Installation and Usage
-- Download [VF_delivery.py](https://raw.githubusercontent.com/jeinselenVF/VF-BlenderDelivery/main/VF_delivery.py)
+- Download [VF_delivery.py](https://raw.githubusercontent.com/jeinselen/VF-BlenderDelivery/main/VF_delivery.py)
 - Open Blender Preferences and navigate to the "Add-ons" tab
 - Install and enable the add-on
 - It will show up in the 3D view `VF Tools` tab
@@ -76,7 +76,7 @@ Exporting a .vf (volume field) file for use in Unity 3D requires specific mesh a
 
 Download template file: [VolumeFieldTemplate.blend.zip](images/VolumeFieldTemplate.blend.zip)
 
-![screenshot of the Blender 3D view with the add-on installed, showing "VF — Volume Field (Unity 3D)" selected and three groups on scree; in the middle is a selected grid of points with a four-looped curve highlighted, on the right is a volume field visualisation with small triangles indicating flow direction, and on the left are the results when applied to a particle simiulation](images/screenshot-vf.jpg)
+![screenshot of the Blender 3D view with the add-on installed, showing "VF — Volume Field (Unity 3D)" selected and three groups on scree; in the middle is a selected grid of points with a four-looped curve highlighted, on the right is a volume field visualisation with small triangles indicating flow direction, and on the left are the results when applied to a particle simulation](images/screenshot-vf.jpg)
 
 
 

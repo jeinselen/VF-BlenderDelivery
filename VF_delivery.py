@@ -1,13 +1,13 @@
 bl_info = {
 	"name": "VF Delivery",
 	"author": "John Einselen - Vectorform LLC",
-	"version": (0, 12, 0),
+	"version": (0, 12, 2),
 	"blender": (3, 3, 1),
 	"location": "Scene > VF Tools > Delivery",
 	"description": "Quickly export selected objects to a specified directory",
 	"warning": "inexperienced developer, use at your own risk",
-	"doc_url": "https://github.com/jeinselenVF/VF-BlenderDelivery",
-	"tracker_url": "https://github.com/jeinselenVF/VF-BlenderDelivery/issues",
+	"doc_url": "https://github.com/jeinselen/VF-BlenderDelivery",
+	"tracker_url": "https://github.com/jeinselen/VF-BlenderDelivery/issues",
 	"category": "3D View"}
 
 import bpy
@@ -36,6 +36,10 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 	bl_label = "Deliver File"
 	bl_description = "Quickly export selected objects or collection to a specified directory"
 #	bl_options = {'REGISTER', 'UNDO'}
+	
+	def remap(self, val, start, stop):
+		val = (val - start) / (stop - start)
+		return val
 	
 	def execute(self, context):
 		# Set up local variables
@@ -332,6 +336,80 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 				# Cancel processing
 				return {'CANCELLED'}
 		
+		elif format == "PNG":
+			# Name of the custom attribute
+			attribute_name = 'field_vector'
+			
+			# Get the active selected object
+			obj = bpy.context.object
+			
+			# Ensure the selected object is a mesh with equal to or fewer than 65536 vertices and the necessary properties and attributes
+			# The actual limit for 3D textures in Unity is 2048 x 2048 x 2048 = 8,589,934,592
+			# However...that would result in an image over 4 million pixels wide, and I just don't want to deal with the ramifications of that right now
+			if obj and obj.type == 'MESH' and len(obj.data.vertices) <= 65536 and obj.data.get('vf_point_grid_x') is not None and obj.data.get('vf_point_grid_y') is not None and obj.data.get('vf_point_grid_z') is not None:
+				# Get evaluated object
+				obj = bpy.context.evaluated_depsgraph_get().objects.get(obj.name)
+				
+				# Check if named attribute exists
+				if attribute_name in obj.data.attributes:
+					# Get remapping values
+					start = context.scene.vf_delivery_settings.data_range[0]
+					stop = context.scene.vf_delivery_settings.data_range[1]
+					
+					# Create empty array
+					array = []
+					
+					# For each attribute entry, collect the results
+					for data in obj.data.attributes[attribute_name].data:
+						# Check if the attribute includes a value
+						if hasattr(data, 'value'):
+							# Instead of nested arrays, just create a flat list of values
+							val = self.remap(data.value, start, stop)
+							array.append(val)
+							array.append(val)
+							array.append(val)
+							array.append(1.0)
+						# Check if the attribute includes a vector
+						elif hasattr(data, 'vector'):
+							# Instead of nested arrays, just create a flat list of values
+							array.append(self.remap(data.vector.x, start, stop))
+							# Swizzle ZY order for Blender to Unity coordinate conversion
+							array.append(self.remap(data.vector.z, start, stop))
+							array.append(self.remap(data.vector.y, start, stop))
+							array.append(1.0)
+						else:
+							print(f"Values not found in '{attribute_name}' attribute.")
+							return {'CANCELLED'}
+					
+					# Get output sizes using custom properties
+					grid_x = obj.data["vf_point_grid_x"]
+					grid_y = obj.data["vf_point_grid_y"]
+					grid_z = obj.data["vf_point_grid_z"]
+					
+					# Swizzle ZY order for Unity coordinate system
+					image_width = grid_x * grid_y
+					image_height = grid_z
+					
+					# Create image
+					image = bpy.data.images.new("3DtextureOutput", width=image_width, height=image_height, alpha=False, float_buffer=True, is_data=True)
+					
+					# Image content
+					# Swizzle ZY order for Unity coordinate system
+					array = np.array(array).reshape((grid_x, grid_z, grid_y, 4))
+					array = np.rot90(array, axes=(0, 1))
+					image.pixels = array.flatten()
+					
+					# Save PNG
+					image.filepath_raw = location + obj.name + file_format
+					image.file_format = 'PNG'
+					image.save()
+				else:
+					print(f"Selected object does not contain '{attribute_name}' values.")
+					return {'CANCELLED'}
+			else:
+				print(f"Selected object is not a mesh")
+				return {'CANCELLED'}
+		
 		elif format == "CSV-1":
 			# Save timeline position
 			frame_current = bpy.context.scene.frame_current
@@ -348,7 +426,7 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 					bpy.context.scene.frame_set(i)
 					loc, rot, scale = obj.matrix_world.decompose() if space == "WORLD" else obj.matrix_local.decompose()
 					array.append([loc.x, loc.y, loc.z])
-					
+				
 				# Save out CSV file
 				np.savetxt(
 					location + obj.name + file_format,
@@ -357,7 +435,7 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 					newline = '\n',
 					fmt = '% s'
 					)
-					
+			
 			# Reset timeline position
 			bpy.context.scene.frame_set(frame_current)
 		
@@ -410,6 +488,7 @@ class vfDeliverySettings(bpy.types.PropertyGroup):
 			('STL', 'STL — 3D Printing', 'Export individual STL file of each selected object for 3D printing'),
 			(None),
 			('VF', 'VF — Unity 3D Volume Field', 'Export volume field for Unity 3D'),
+			('PNG', 'PNG — 3D Texture Strip', 'Export volume field as a PNG image strip for Godot, Unity 3D, or Unreal Engine'),
 			(None),
 			('CSV-1', 'CSV — Item Position', 'Export CSV file of the selected object\'s position for all frames within the render range'),
 			('CSV-2', 'CSV — Point Position', 'Export CSV file of the selected object\'s points in object space')
@@ -429,6 +508,17 @@ class vfDeliverySettings(bpy.types.PropertyGroup):
 			('INDIVIDUAL', 'Individual', 'Export selection as individual files')
 			],
 		default = 'COMBINED')
+	data_range: bpy.props.FloatVectorProperty(
+		name='Range',
+		description='Range of data to be normalised within 0-1 image values',
+		size=2,
+		default=(-1.0, 1.0),
+		step=1,
+		precision=2,
+		soft_min=-1.0,
+		soft_max= 1.0,
+		min=-1000.0,
+		max= 1000.0)
 	csv_position: bpy.props.EnumProperty(
 		name = 'Position',
 		description = 'Sets local or world space coordinates',
@@ -445,6 +535,7 @@ class vfDeliverySettings(bpy.types.PropertyGroup):
 #			('DEG', 'Degrees', 'Output rotation in degrees')
 #			],
 #		default = 'RAD')
+	
 
 class VFTOOLS_PT_delivery(bpy.types.Panel):
 	bl_space_type = "VIEW_3D"
@@ -474,6 +565,7 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 			button_title = ''
 			info_box = ''
 			show_group = True
+			show_range = False
 			show_csv = False
 			object_count = 0
 			
@@ -481,12 +573,14 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 			if bpy.context.object and bpy.context.object.select_get():
 				# Volume Field: count only an active mesh with the necessary data elements
 				# Does not check for named attributes, however, since that requires applying all modifiers
-				if context.scene.vf_delivery_settings.file_type == "VF":
+				if context.scene.vf_delivery_settings.file_type == "VF" or context.scene.vf_delivery_settings.file_type == "PNG":
 					obj = bpy.context.object
 					# Validate object data (doesn't check if the geometry nodes modifier actually includes a named attribute)
 					if obj.type == 'MESH' and len(obj.data.vertices) <= 65536 and obj.data.get('vf_point_grid_x') is not None and obj.data.get('vf_point_grid_y') is not None and obj.data.get('vf_point_grid_z') is not None and ('field_vector' in obj.data.attributes or 'NODES' in [modifier.type for modifier in obj.modifiers]):
 						object_count = 1
 #						info_box = 'Volume export requires,"field_vector" attribute in,Geometry Node modifier'
+						if context.scene.vf_delivery_settings.file_type == "PNG":
+							info_box = 'Columns: ' + str(obj.data["vf_point_grid_y"])
 					else:
 						info_box = 'Volume export requires:,mesh with <=65536 points,"vf_point_grid..." properties,"field_vector" attribute'
 				# CSV: count any items
@@ -513,13 +607,13 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 				button_icon = "OUTLINER_OB_MESH"
 			
 			# Active collection fallback (except for Volume Field)
-			elif not context.scene.vf_delivery_settings.file_type == "VF":
+			elif not (context.scene.vf_delivery_settings.file_type == "VF" or context.scene.vf_delivery_settings.file_type == "PNG"):
 				# Volume Field: requires an active mesh object, collections are not supported
 				# CSV-1: count any items within the collection
 				if context.scene.vf_delivery_settings.file_type == "CSV-1":
 					object_count = len(bpy.context.collection.all_objects)
 				# Geometry: count only supported data types (mesh, curve, etcetera) for everything else
-				elif not context.scene.vf_delivery_settings.file_type == "VF":
+				else:
 					object_count = len([obj for obj in bpy.context.collection.all_objects if obj.type in VF_delivery_object_types])
 				
 				# Button title
@@ -542,9 +636,12 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 					button_title = "Select mesh"
 			
 			# Specific display cases
-			if context.scene.vf_delivery_settings.file_type == "VF":
+			if context.scene.vf_delivery_settings.file_type == "VF" or context.scene.vf_delivery_settings.file_type == "PNG":
 				show_group = False
 				show_csv = False
+			
+			if context.scene.vf_delivery_settings.file_type == "PNG":
+				show_range = True
 			
 			if context.scene.vf_delivery_settings.file_type == "CSV-1":
 				show_group = False
@@ -563,6 +660,9 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 			
 			if show_group:
 				layout.prop(context.scene.vf_delivery_settings, 'file_grouping', expand = True)
+			
+			if show_range:
+				layout.prop(context.scene.vf_delivery_settings, 'data_range')
 			
 			if show_csv:
 				layout.prop(context.scene.vf_delivery_settings, 'csv_position', expand = True)
@@ -601,3 +701,4 @@ def unregister():
 	
 if __name__ == "__main__":
 	register()
+	
