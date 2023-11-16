@@ -1,7 +1,7 @@
 bl_info = {
 	"name": "VF Delivery",
 	"author": "John Einselen - Vectorform LLC",
-	"version": (0, 12, 2),
+	"version": (0, 12, 4),
 	"blender": (3, 3, 1),
 	"location": "Scene > VF Tools > Delivery",
 	"description": "Quickly export selected objects to a specified directory",
@@ -336,7 +336,7 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 				# Cancel processing
 				return {'CANCELLED'}
 		
-		elif format == "PNG":
+		elif format == "PNG" or format == "EXR":
 			# Name of the custom attribute
 			attribute_name = 'field_vector'
 			
@@ -372,10 +372,16 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 						# Check if the attribute includes a vector
 						elif hasattr(data, 'vector'):
 							# Instead of nested arrays, just create a flat list of values
-							array.append(self.remap(data.vector.x, start, stop))
-							# Swizzle ZY order for Blender to Unity coordinate conversion
-							array.append(self.remap(data.vector.z, start, stop))
-							array.append(self.remap(data.vector.y, start, stop))
+							if format == 'PNG':
+								array.append(self.remap(data.vector.x, start, stop))
+								# Swizzle ZY order for Blender to Unity coordinate conversion
+								array.append(self.remap(data.vector.z, start, stop))
+								array.append(self.remap(data.vector.y, start, stop))
+							else:
+								array.append(data.vector.x)
+								# Swizzle ZY order for Blender to Unity coordinate conversion
+								array.append(data.vector.z)
+								array.append(data.vector.y)
 							array.append(1.0)
 						else:
 							print(f"Values not found in '{attribute_name}' attribute.")
@@ -386,6 +392,7 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 					grid_y = obj.data["vf_point_grid_y"]
 					grid_z = obj.data["vf_point_grid_z"]
 					
+					# Set image width (horizontal * depth) and height (vertical)
 					# Swizzle ZY order for Unity coordinate system
 					image_width = grid_x * grid_y
 					image_height = grid_z
@@ -395,13 +402,20 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 					
 					# Image content
 					# Swizzle ZY order for Unity coordinate system
-					array = np.array(array).reshape((grid_x, grid_z, grid_y, 4))
+					array = np.array(array).reshape((grid_y, grid_z, grid_x, 4))
+					# Flip vertical axis
+					array = array[:,::-1,:]
+					# Rotate
 					array = np.rot90(array, axes=(0, 1))
+					# Flatten into string of colour values
 					image.pixels = array.flatten()
 					
-					# Save PNG
+					# Save image
 					image.filepath_raw = location + obj.name + file_format
-					image.file_format = 'PNG'
+					if format == 'PNG':
+						image.file_format = 'PNG'
+					else:
+						image.file_format = 'OPEN_EXR'
 					image.save()
 				else:
 					print(f"Selected object does not contain '{attribute_name}' values.")
@@ -487,8 +501,9 @@ class vfDeliverySettings(bpy.types.PropertyGroup):
 			(None),
 			('STL', 'STL — 3D Printing', 'Export individual STL file of each selected object for 3D printing'),
 			(None),
-			('VF', 'VF — Unity 3D Volume Field', 'Export volume field for Unity 3D'),
-			('PNG', 'PNG — 3D Texture Strip', 'Export volume field as a PNG image strip for Godot, Unity 3D, or Unreal Engine'),
+			('VF', 'VF — Unity 3D Volume Field', 'Export volume field for Unity 3D (best used with the VFX Graph)'),
+			('PNG', 'PNG — 3D Texture Strip', 'Export volume field as an image strip for Godot, Unity 3D, or Unreal Engine'),
+			('EXR', 'EXR — 3D Texture Strip', 'Export volume field as an image strip for Godot, Unity 3D, or Unreal Engine'),
 			(None),
 			('CSV-1', 'CSV — Item Position', 'Export CSV file of the selected object\'s position for all frames within the render range'),
 			('CSV-2', 'CSV — Point Position', 'Export CSV file of the selected object\'s points in object space')
@@ -535,7 +550,6 @@ class vfDeliverySettings(bpy.types.PropertyGroup):
 #			('DEG', 'Degrees', 'Output rotation in degrees')
 #			],
 #		default = 'RAD')
-	
 
 class VFTOOLS_PT_delivery(bpy.types.Panel):
 	bl_space_type = "VIEW_3D"
@@ -573,13 +587,13 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 			if bpy.context.object and bpy.context.object.select_get():
 				# Volume Field: count only an active mesh with the necessary data elements
 				# Does not check for named attributes, however, since that requires applying all modifiers
-				if context.scene.vf_delivery_settings.file_type == "VF" or context.scene.vf_delivery_settings.file_type == "PNG":
+				if context.scene.vf_delivery_settings.file_type == "VF" or context.scene.vf_delivery_settings.file_type == "PNG" or context.scene.vf_delivery_settings.file_type == "EXR":
 					obj = bpy.context.object
 					# Validate object data (doesn't check if the geometry nodes modifier actually includes a named attribute)
 					if obj.type == 'MESH' and len(obj.data.vertices) <= 65536 and obj.data.get('vf_point_grid_x') is not None and obj.data.get('vf_point_grid_y') is not None and obj.data.get('vf_point_grid_z') is not None and ('field_vector' in obj.data.attributes or 'NODES' in [modifier.type for modifier in obj.modifiers]):
 						object_count = 1
 #						info_box = 'Volume export requires,"field_vector" attribute in,Geometry Node modifier'
-						if context.scene.vf_delivery_settings.file_type == "PNG":
+						if context.scene.vf_delivery_settings.file_type == "PNG" or context.scene.vf_delivery_settings.file_type == "EXR":
 							info_box = 'Columns: ' + str(obj.data["vf_point_grid_y"])
 					else:
 						info_box = 'Volume export requires:,mesh with <=65536 points,"vf_point_grid..." properties,"field_vector" attribute'
@@ -607,7 +621,7 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 				button_icon = "OUTLINER_OB_MESH"
 			
 			# Active collection fallback (except for Volume Field)
-			elif not (context.scene.vf_delivery_settings.file_type == "VF" or context.scene.vf_delivery_settings.file_type == "PNG"):
+			elif not (context.scene.vf_delivery_settings.file_type == "VF" or context.scene.vf_delivery_settings.file_type == "PNG" or context.scene.vf_delivery_settings.file_type == "EXR"):
 				# Volume Field: requires an active mesh object, collections are not supported
 				# CSV-1: count any items within the collection
 				if context.scene.vf_delivery_settings.file_type == "CSV-1":
@@ -636,7 +650,7 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 					button_title = "Select mesh"
 			
 			# Specific display cases
-			if context.scene.vf_delivery_settings.file_type == "VF" or context.scene.vf_delivery_settings.file_type == "PNG":
+			if context.scene.vf_delivery_settings.file_type == "VF" or context.scene.vf_delivery_settings.file_type == "PNG" or context.scene.vf_delivery_settings.file_type == "EXR":
 				show_group = False
 				show_csv = False
 			
