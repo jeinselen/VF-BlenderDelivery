@@ -1,7 +1,7 @@
 bl_info = {
 	"name": "VF Delivery",
 	"author": "John Einselen - Vectorform LLC",
-	"version": (0, 12, 4),
+	"version": (0, 12, 6),
 	"blender": (3, 3, 1),
 	"location": "Scene > VF Tools > Delivery",
 	"description": "Quickly export selected objects to a specified directory",
@@ -57,7 +57,7 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 		if active_object is not None:
 			object_mode = active_object.mode
 			bpy.ops.object.mode_set(mode = 'OBJECT')
-				
+		
 		# Check if at least one object is selected, if not, convert selected collection into object selection
 		if bpy.context.object and bpy.context.object.select_get():
 			file_name = active_object.name
@@ -65,7 +65,7 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 			file_name = bpy.context.collection.name
 			for obj in bpy.context.collection.all_objects:
 				obj.select_set(True)
-				
+		
 		if format != "CSV-1":
 			# Push an undo state (seems easier than trying to re-select previously selected non-mesh objects)
 			bpy.ops.ed.undo_push()
@@ -74,8 +74,9 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 			for obj in bpy.context.selected_objects:
 				if obj.type not in VF_delivery_object_types:
 					obj.select_set(False)
-					
-		# Begin primary export section (formats that support UV maps)
+		
+# MESH (REALTIME 3D)
+		
 		if format == "FBX" or format == "GLB" or format == "OBJ" or format == "USDZ":
 			# Push an undo state (easier than trying to re-select previously selected non-MESH objects?)
 			bpy.ops.ed.undo_push()
@@ -95,14 +96,14 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 					file_name = obj.name
 					# Note to future self; you probably missed the comment block just above. Please stop freaking out. When combined is true the loop is exited after the first export pass. You can stop frantically scrolling for multi-export errors, you'll just get to the end of this section and figure out the solution is already implemented. Again.
 				
-				elif format == "FBX":
+				if format == "FBX":
 					bpy.ops.export_scene.fbx(
 						filepath = location + file_name + file_format,
 						check_existing = False, # Always overwrite existing files
 						use_selection = True,
 						use_visible = True,
 						use_active_collection = False, # This is now hardcoded, as we're converting collection selection into object selection manually above
-
+						
 						global_scale = 1.0, # 1.0
 						apply_unit_scale = True,
 						apply_scale_options = 'FBX_SCALE_NONE', # FBX_SCALE_NONE = All Local
@@ -111,7 +112,7 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 						axis_up = 'Y',
 						object_types = {'ARMATURE', 'CAMERA', 'EMPTY', 'LIGHT', 'MESH', 'OTHER'},
 						bake_space_transform = True, # True (this is "!experimental!")
-
+												
 						use_mesh_modifiers = True, # Come back to this...manually trigger application of mesh modifiers and convert attributes to UV maps
 						use_mesh_modifiers_render = True,
 						mesh_smooth_type = 'OFF', # OFF = Normals Only
@@ -120,13 +121,13 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 						use_tspace = False,
 						use_triangles = True, # This wasn't included in the "perfect" Unity settings, but seems logical?
 						use_custom_props = False,
-
+												
 						use_armature_deform_only = True, # True
 						add_leaf_bones = False, # False
 						primary_bone_axis = 'X', # X Axis
 						secondary_bone_axis = 'Y', # Y Axis
 						armature_nodetype = 'NULL',
-
+												
 						bake_anim = True,
 						bake_anim_use_all_bones = True,
 						bake_anim_use_nla_strips = True,
@@ -134,7 +135,7 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 						bake_anim_force_startend_keying = True, # Some recommend False, but Unity may not load animations nicely without starting keyframes
 						bake_anim_step = 1.0,
 						bake_anim_simplify_factor = 1.0,
-
+												
 						path_mode = 'AUTO',
 						embed_textures = False,
 						batch_mode = 'OFF',
@@ -147,7 +148,7 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 						check_existing = False, # Always overwrite existing files
 						export_format = 'GLB',
 						export_copyright = '',
-
+						
 						export_image_format = 'JPEG',
 						export_texcoords = True,
 						export_normals = True,
@@ -158,24 +159,24 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 						export_draco_texcoord_quantization = 12,
 						export_draco_color_quantization = 10,
 						export_draco_generic_quantization = 12,
-
+						
 						export_tangents = False,
 						export_materials = 'EXPORT',
 						export_colors = True,
 						use_mesh_edges = False,
 						use_mesh_vertices = False,
 						export_cameras = False,
-
+						
 						use_selection = True,
 						use_visible = True,
 						use_renderable = True,
 						use_active_collection = False, # This is hardcoded now, as collections are converted manually to object selections above
 						use_active_scene = False,
-
+						
 						export_extras = False,
 						export_yup = True,
 						export_apply = True,
-
+						
 						export_animations = True,
 						export_frame_range = True,
 						export_frame_step = 1,
@@ -186,41 +187,70 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 						export_current_frame = False,
 						export_skins = True,
 						export_all_influences = False,
-
+						
 						export_morph = True,
 						export_morph_normal = True,
 						export_morph_tangent = False,
-
+						
 						export_lights = False,
 						will_save_settings = False,
 						filter_glob = '*.glb;*.gltf')
-					
+				
 				elif format == "OBJ":
-					bpy.ops.export_scene.obj(
-						filepath = location + file_name + file_format,
-						check_existing = False, # Always overwrite existing files
-						filter_glob = '*.obj;*.mtl',
-						
-						use_selection = True,
-						use_animation = False,
-						use_mesh_modifiers = True,
-						use_edges = False, # Changed from default
-						use_smooth_groups = False,
-						use_smooth_groups_bitflags = False,
-						use_normals = True,
-						use_uvs = True,
-						use_materials = True,
-						use_triangles = True, # Changed from default
-						use_nurbs = False,
-						use_vertex_groups = False,
-						use_blen_objects = True,
-						group_by_object = False,
-						group_by_material = False,
-						keep_vertex_order = True, # Changed from default
-						global_scale = 100.0,
-						path_mode = 'AUTO',
-						axis_forward = '-Z',
-						axis_up = 'Y')
+					
+					if bpy.app.version[0] < 4:
+						# Blender 3.x
+						bpy.ops.export_scene.obj(
+							filepath = location + file_name + file_format,
+							check_existing = False, # Always overwrite existing files
+							use_selection = True,
+							use_animation = False,
+							use_mesh_modifiers = True,
+							use_edges = False, # Changed from default
+							use_smooth_groups = False,
+							use_smooth_groups_bitflags = False,
+							use_normals = True,
+							use_uvs = True,
+							use_materials = True,
+							use_triangles = True, # Changed from default
+							use_nurbs = False,
+							use_vertex_groups = False,
+							use_blen_objects = True,
+							group_by_object = False,
+							group_by_material = False,
+							keep_vertex_order = True, # Changed from default
+							global_scale = 100.0,
+							path_mode = 'AUTO',
+							axis_forward = '-Z',
+							axis_up = 'Y')
+					
+					else:
+						# Blender 4.x
+						bpy.ops.wm.obj_export(
+							filepath = location + file_name + file_format,
+							check_existing = False, # Always overwrite existing files
+							export_animation = False,
+							#start_frame = bpy.context.scene.frame_start,
+							#end_frame = bpy.context.scene.frame_end,
+							forward_axis = 'NEGATIVE_Z',
+							up_axis = 'Y',
+							global_scale = 100.0,
+							apply_modifiers = True,
+							export_eval_mode = 'DAG_EVAL_RENDER', # Apply render modifiers, not viewport
+							export_selected_objects = True, # Export only selected object(s)
+							export_uv = True,
+							export_normals = True,
+							export_colors = False,
+							export_materials = True,
+							export_pbr_extensions = True, # Changed from default
+							path_mode = 'AUTO',
+							export_triangulated_mesh = True, # Changed from default
+							export_curves_as_nurbs = False,
+							export_object_groups = False,
+							export_material_groups = False,
+							export_vertex_groups = False,
+							export_smooth_groups = False,
+							smooth_group_bitflags = False)
 				
 				elif format == "USDZ":
 					bpy.ops.wm.usd_export(
@@ -240,17 +270,16 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 						export_textures = True,
 						overwrite_textures = True, # Changed from default
 						relative_paths = True)
-					
+				
 				# Interrupt the loop if we're exporting all objects to the same file
 				if combined:
 					break
-					
+			
 			# Undo the previously completed object modifications
 			for i in range(undo_steps):
 				bpy.ops.ed.undo()
-				
-		# End primary export section (formats that support UV maps)
-		# Begin secondary export section (formats that do not support UV maps)
+		
+# MESH (3D PRINTING)
 		
 		elif format == "STL":
 			batch = 'OFF' if combined else 'OBJECT'
@@ -269,6 +298,8 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 				axis_forward = 'Y',
 				axis_up = 'Z',
 				filter_glob = '*.stl')
+		
+# VOLUME (3D TEXTURE)
 		
 		elif format == "VF":
 			# Define the data to be saved
@@ -424,6 +455,8 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 				print(f"Selected object is not a mesh")
 				return {'CANCELLED'}
 		
+# DATA (XYZ POSITIONS)
+			
 		elif format == "CSV-1":
 			# Save timeline position
 			frame_current = bpy.context.scene.frame_current
