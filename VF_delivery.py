@@ -303,10 +303,19 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 		
 		elif format == "VF":
 			# Define the data to be saved
-			fourcc = "VF_V"  # Replace with the appropriate FourCC of either 'VF_F' for value or 'VF_V' for vec3
+			vf_dataType_Float = True if bpy.context.scene.vf_delivery_settings.vf_dataType == "FLOAT" else False
+			vf_swizzle_None = True if bpy.context.scene.vf_delivery_settings.vf_swizzle == "NONE" else False
 			
-			# Name of the custom attribute
-			attribute_name = 'field_vector'
+			if (vf_dataType_Float):
+				fourcc = "VF_F"  # Replace with the appropriate FourCC of either 'VF_F' for value or 'VF_V' for vec3
+			
+				# Name of the custom attribute
+				attribute_name = 'field_float'
+			else:
+				fourcc = "VF_V"  # Replace with the appropriate FourCC of either 'VF_F' for value or 'VF_V' for vec3
+			
+				# Name of the custom attribute
+				attribute_name = 'field_vector'
 			
 			# Get the active selected object
 			obj = bpy.context.object
@@ -334,11 +343,17 @@ class VFDELIVERY_OT_file(bpy.types.Operator):
 							print(f"Values not found in '{attribute_name}' attribute.")
 							return {'CANCELLED'}
 					
-					# Set array size using custom properties
-					size_x = obj.data["vf_point_grid_x"]
-					size_y = obj.data["vf_point_grid_z"] # Swizzle XZY order for Unity coordinate system
-					size_z = obj.data["vf_point_grid_y"] # Swizzle XZY order for Unity coordinate system
-					
+					if vf_swizzle_None:
+						# Set array size using custom properties
+						size_x = obj.data["vf_point_grid_x"]
+						size_y = obj.data["vf_point_grid_y"]
+						size_z = obj.data["vf_point_grid_z"]
+					else:
+						# Set array size using custom properties
+						size_x = obj.data["vf_point_grid_x"]
+						size_y = obj.data["vf_point_grid_z"] # Swizzle XZY order for Unity coordinate system
+						size_z = obj.data["vf_point_grid_y"] # Swizzle XZY order for Unity coordinate system
+
 					# Calculate the stride based on the data type
 					is_float_data = fourcc[3] == 'F'
 					stride = 1 if is_float_data else 3
@@ -556,6 +571,22 @@ class vfDeliverySettings(bpy.types.PropertyGroup):
 			('INDIVIDUAL', 'Individual', 'Export selection as individual files')
 			],
 		default = 'COMBINED')
+	vf_dataType: bpy.props.EnumProperty(
+		name = 'VF Data Type',
+		description = 'Sets output data type',
+		items = [
+			('FLOAT', 'Float', 'Export data as floats'),
+			('VECTOR3', 'Vector3', 'Export data as vector3s')
+			],
+		default = 'VECTOR3')
+	vf_swizzle: bpy.props.EnumProperty(
+		name = 'VF Swizzle',
+		description = 'Sets output data type',
+		items = [
+			('NONE', 'None', 'Keep axes in order'),
+			('SWAPYZ', 'Swap Y and Z', 'Swap Y and Z axes. Important for Unity')
+			],
+		default = 'SWAPYZ')
 	data_range: bpy.props.FloatVectorProperty(
 		name='Range',
 		description='Range of data to be normalised within 0-1 image values',
@@ -614,6 +645,8 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 			show_group = True
 			show_range = False
 			show_csv = False
+			show_vf_dataType = False
+			show_vf_swizzle = False
 			object_count = 0
 			
 			# Check if at least one object is selected
@@ -686,6 +719,8 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 			if context.scene.vf_delivery_settings.file_type == "VF" or context.scene.vf_delivery_settings.file_type == "PNG" or context.scene.vf_delivery_settings.file_type == "EXR":
 				show_group = False
 				show_csv = False
+				show_vf_dataType = True
+				show_vf_swizzle = True
 			
 			if context.scene.vf_delivery_settings.file_type == "PNG":
 				show_range = True
@@ -705,6 +740,12 @@ class VFTOOLS_PT_delivery(bpy.types.Panel):
 			layout.prop(context.scene.vf_delivery_settings, 'file_location', text = '')
 			layout.prop(context.scene.vf_delivery_settings, 'file_type', text = '')
 			
+			if show_vf_dataType:
+				layout.prop(context.scene.vf_delivery_settings, 'vf_dataType', expand = True)
+
+			if show_vf_swizzle:
+				layout.prop(context.scene.vf_delivery_settings, 'vf_swizzle', expand = True)
+
 			if show_group:
 				layout.prop(context.scene.vf_delivery_settings, 'file_grouping', expand = True)
 			
