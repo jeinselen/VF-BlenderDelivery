@@ -1,6 +1,7 @@
-# VF Delivery
+> [!NOTE]
+> This add-on for earlier Blender versions has been migrated to the [Delivery Kit extension](https://github.com/jeinselen/Blender-DeliveryKit) for Blender 4.2+
 
-This add-on was designed for Blender version 2.8-4.1 (though not all previous versions may be fully supported). For Blender 4.2 and onwards, [please see the new Delivery Kit extension](https://github.com/jeinselen/Blender-DeliveryKit).
+# VF Delivery
 
 Export shortcuts for specific production pipelines. Includes presets for Unity 3D (FBX), ThreeJS (compressed GLB), Element3D (OBJ), Xcode (USDZ), 3D printing (STL with multi-object output), 3d texture strips (Unity VF, PNG, EXR), and data visualisation (CSV item and vertex position data).
 
